@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package room_service;
+
+message TimeSlot
+{
+  string start_time = 1;
+  string end_time = 2;
+}
+
+message AvailableSlotsRequest
+{
+  string room_id = 1;
+  string date = 2;
+}
+
+message AvailableSlotsResponse
+{
+  repeated TimeSlot available_slots = 1;
+}
+
+message BookRoomRequest
+{
+  string room_id = 1;
+  string date = 2;
+  string start_time = 3;
+  string end_time = 4;
+}
+
+message BookRoomResponse
+{
+  string start_time = 1;
+  string end_time = 2;
+}
+
+message Conflict
+{
+  string booking_id = 1;
+  string start_time = 2;
+  string end_time = 3;
+  string status = 4;
+  string user_id = 5;
+}
+
+message ValidationDetails
+{
+  bool time_range_valid = 1;
+  bool duration_valid = 2;
+  bool working_hours_valid = 3;
+  bool no_conflicts = 4;
+}
+
+message ValidateRequest
+{
+  string room_id = 1;
+  string start_time = 2;
+  string end_time = 3;
+  optional string booking_id = 4;
+}
+
+message ValidateResponse 
+{
+  bool is_valid = 1;
+  repeated Conflict conflicts = 2;
+  ValidationDetails details = 3;
+}
+
+service RoomService {
+  rpc AvailableSlots(AvailableSlotsRequest) returns (AvailableSlotsResponse);
+  rpc BookRoom(BookRoomRequest) returns (BookRoomResponse);
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+}
