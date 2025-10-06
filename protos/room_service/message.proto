@@ -65,8 +65,29 @@ message ValidateResponse
   ValidationDetails details = 3;
 }
 
+message OcupiedIntervalsRequest
+{
+  string room_id = 1;
+  string date = 2;
+}
+
+message Interval
+{
+  string booking_id = 1;
+  string start_time = 2;
+  string end_time = 3;
+  string user_id = 4;
+  string note = 5;
+}
+
+message OcupiedIntervalsResponce
+{
+  repeated Interval intervals = 1;
+}
+
 service RoomService {
   rpc AvailableSlots(AvailableSlotsRequest) returns (AvailableSlotsResponse);
   rpc BookRoom(BookRoomRequest) returns (BookRoomResponse);
   rpc Validate(ValidateRequest) returns (ValidateResponse);
+  rpc OcupiedIntervals(OcupiedIntervalsRequest) returns (OcupiedIntervalsResponce);
 }
