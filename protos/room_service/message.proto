@@ -85,7 +85,8 @@ message OcupiedIntervalsResponce
   repeated Interval intervals = 1;
 }
 
-service RoomService {
+service RoomService
+{
   rpc AvailableSlots(AvailableSlotsRequest) returns (AvailableSlotsResponse);
   rpc BookRoom(BookRoomRequest) returns (BookRoomResponse);
   rpc Validate(ValidateRequest) returns (ValidateResponse);

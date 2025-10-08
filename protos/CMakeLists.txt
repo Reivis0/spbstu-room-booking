@@ -5,7 +5,7 @@ set(PROTO_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/room_service/message.proto
 )
 
-set(PROTO_GEN_DIR ${CMAKE_SOURCE_DIR}/protos/genproto)
+set(PROTO_GEN_DIR ${CMAKE_SOURCE_DIR}/include/genproto)
 file(MAKE_DIRECTORY "${PROTO_GEN_DIR}") 
 
 add_library(protos_lib STATIC)
