@@ -1,6 +1,5 @@
 #include "postgreSQL_async_client.hpp"
 
-#include <iostream>
 #include <fstream>
 #include <exception>
 #include <sstream>
