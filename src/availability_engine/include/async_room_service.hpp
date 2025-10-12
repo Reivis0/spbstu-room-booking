@@ -5,7 +5,7 @@
 #include <include/genproto/message.pb.h>
 #include <grpcpp/grpcpp.h>
 
-#include <src/common/cahce/redis_acync_client.hpp>
+#include <src/common/cahce/redis_async_client.hpp>
 #include <src/common/database/postgreSQL_async_client.hpp>
 #include <src/common/messaging/nats_async_client.hpp>
 
@@ -101,7 +101,5 @@ private:
   room_service::RoomService::AsyncService m_service;
   std::unique_ptr<grpc::ServerCompletionQueue> m_cq;
   std::unique_ptr<grpc::Server> m_server;
-
-
 };
 #endif
