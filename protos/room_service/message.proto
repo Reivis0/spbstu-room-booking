@@ -8,18 +8,7 @@ message TimeSlot
   string end_time = 2;
 }
 
-message AvailableSlotsRequest
-{
-  string room_id = 1;
-  string date = 2;
-}
-
-message AvailableSlotsResponse
-{
-  repeated TimeSlot available_slots = 1;
-}
-
-message BookRoomRequest
+message ComputeIntervalsRequest
 {
   string room_id = 1;
   string date = 2;
@@ -27,10 +16,9 @@ message BookRoomRequest
   string end_time = 4;
 }
 
-message BookRoomResponse
+message ComputeIntervalsResponse
 {
-  string start_time = 1;
-  string end_time = 2;
+  repeated TimeSlot available_slots = 1;
 }
 
 message Conflict
@@ -87,8 +75,7 @@ message OcupiedIntervalsResponce
 
 service RoomService
 {
-  rpc AvailableSlots(AvailableSlotsRequest) returns (AvailableSlotsResponse);
-  rpc BookRoom(BookRoomRequest) returns (BookRoomResponse);
+  rpc ComputeIntervals(ComputeIntervalsRequest) returns (ComputeIntervalsResponse);
   rpc Validate(ValidateRequest) returns (ValidateResponse);
   rpc OcupiedIntervals(OcupiedIntervalsRequest) returns (OcupiedIntervalsResponce);
 }

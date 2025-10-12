@@ -6,7 +6,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <src/common/cahce/redis_acync_client.hpp>
-#include <src/common/database/postreSQL_async_clien.hpp>
+#include <src/common/database/postgreSQL_async_client.hpp>
 #include <src/common/messaging/nats_async_client.hpp>
 
 #include <string>
@@ -31,10 +31,10 @@ private:
 
   };
   
-  class AvailableSlotsCallData : public CallData
+  class ComputeIntervalsCallData : public CallData
   {
   public:
-    AvailableSlotsCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq);
+    ComputeIntervalsCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq);
     void Proceed() override;
     void ProcessRequest();
     void ProcessWithCache();
@@ -45,28 +45,9 @@ private:
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
-      room_service::AvailableSlotsRequest m_request;
-      room_service::AvailableSlotsResponse m_response;
-      grpc::ServerAsyncResponseWriter<room_service::AvailableSlotsResponse> m_responder;
-      enum CallStatus {CREATE, PROCESS, FINISH};
-      CallStatus m_status;
-  };
-
-  class BookRoomCallData : public CallData
-  {
-    public:
-    BookRoomCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq);
-    void Proceed() override;
-    void ProcessRequest();
-    void CompleteRequest();
-
-    private:
-      room_service::RoomService::AsyncService* m_service;
-      grpc::ServerCompletionQueue* m_cq;
-      grpc::ServerContext m_ctx;
-      room_service::BookRoomRequest m_request;
-      room_service::BookRoomResponse m_response;
-      grpc::ServerAsyncResponseWriter<room_service::BookRoomResponse> m_responder;
+      room_service::ComputeIntervalsRequest m_request;
+      room_service::ComputeIntervalsResponse m_response;
+      grpc::ServerAsyncResponseWriter<room_service::ComputeIntervalsResponse> m_responder;
       enum CallStatus {CREATE, PROCESS, FINISH};
       CallStatus m_status;
   };

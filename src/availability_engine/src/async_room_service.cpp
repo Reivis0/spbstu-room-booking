@@ -4,7 +4,7 @@
 
 //AvailableSlotsCallData
 
-AsyncRoomService::AvailableSlotsCallData::AvailableSlotsCallData(
+AsyncRoomService::ComputeIntervalsCallData::ComputeIntervalsCallData(
     room_service::RoomService::AsyncService* service,
     grpc::ServerCompletionQueue* cq) :
     m_service(service),  m_cq(cq), m_responder(&m_ctx), m_status(CREATE)
@@ -12,16 +12,16 @@ AsyncRoomService::AvailableSlotsCallData::AvailableSlotsCallData(
         Proceed();
     }
 
-void AsyncRoomService::AvailableSlotsCallData::Proceed()
+void AsyncRoomService::ComputeIntervalsCallData::Proceed()
 {
   if(m_status == CREATE)
   {
     m_status = PROCESS;
-    m_service->RequestAvailableSlots(&m_ctx, &m_request, &m_responder, m_cq, m_cq, this);
+    m_service->RequestComputeIntervals(&m_ctx, &m_request, &m_responder, m_cq, m_cq, this);
   }
   else if(m_status == PROCESS)
   {
-    new AvailableSlotsCallData(m_service, m_cq);
+    new ComputeIntervalsCallData(m_service, m_cq);
     ProcessRequest();
   }
   else
@@ -30,7 +30,7 @@ void AsyncRoomService::AvailableSlotsCallData::Proceed()
   }
 }
 
-void AsyncRoomService::AvailableSlotsCallData::ProcessRequest()
+void AsyncRoomService::ComputeIntervalsCallData::ProcessRequest()
 {
   try
   {
@@ -44,64 +44,18 @@ void AsyncRoomService::AvailableSlotsCallData::ProcessRequest()
   }
 }
 
-void AsyncRoomService::AvailableSlotsCallData::ProcessWithCache()
+void AsyncRoomService::ComputeIntervalsCallData::ProcessWithCache()
 {
   //обработка Redis
 }
 
-void AsyncRoomService::AvailableSlotsCallData::ProcessWithDataBase()
+void AsyncRoomService::ComputeIntervalsCallData::ProcessWithDataBase()
 {
   //Обработка PG
 
 }
 
-void AsyncRoomService::AvailableSlotsCallData::CompleteRequest()
-{
-  m_status = FINISH;
-  m_responder.Finish(m_response, grpc::Status::OK, this);
-}
-
-//BookRoomCallData
-
-AsyncRoomService::BookRoomCallData::BookRoomCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq) :
-  m_service(service), m_cq(cq), m_responder(&m_ctx), m_status(CREATE)
-  {
-    Proceed();
-  }
-  
-void AsyncRoomService::BookRoomCallData::Proceed()
-{
-  if(m_status == CREATE)
-  {
-    m_status = PROCESS;
-    m_service->RequestBookRoom(&m_ctx, &m_request, &m_responder,m_cq, m_cq, this);
-  }
-  else if(m_status == PROCESS)
-  {
-    new BookRoomCallData(m_service, m_cq);
-    ProcessRequest();
-  }
-  else
-  {
-    delete this;
-  }
-}
-
-void AsyncRoomService::BookRoomCallData::ProcessRequest()
-{
-  try
-  {
-   //обработка 
-  }
-  catch(const std::exception& ex)
-  {
-    m_responder.FinishWithError(grpc::Status(grpc::StatusCode::INTERNAL, ex.what()), this);
-    m_status = FINISH;
-  }
-   
-}
-
-void AsyncRoomService::BookRoomCallData::CompleteRequest()
+void AsyncRoomService::ComputeIntervalsCallData::CompleteRequest()
 {
   m_status = FINISH;
   m_responder.Finish(m_response, grpc::Status::OK, this);
