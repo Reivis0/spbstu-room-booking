@@ -3,7 +3,7 @@ services:
     build:
       context: ./postgreSQL
       dockerfile: Dockerfile
-    container_name: postgres
+    container_name: booking-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -103,7 +103,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
+    command: ["-js", "-sd", "/data"]
+    stop_signal: SIGTERM
+    stop_grace_period: 180s
 # В будущем добавить дописанный и настроекнный nginx
 
 volumes:

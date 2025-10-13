@@ -1,4 +1,4 @@
-FROM nats:2.10-alpine
+FROM nats:2.11-alpine
 
 # Установка зависимостей и nats CLI
 RUN apk add --no-cache curl bash wget && \
