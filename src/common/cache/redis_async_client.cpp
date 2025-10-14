@@ -5,7 +5,7 @@
 std::map<std::string, std::string> RedisAsyncClient::RedisConnector::read_config()
 {
   std::map<std::string, std::string> config;
-  std::ifstream file("/home/anns/поликек/3 курс/Конструирование ПО/spbstu-room-booking/include/configs/redis_config.ini");
+  std::ifstream file("configs/redis_config.ini");
   
   if (!file.is_open()) {
     std::cerr << "Failed to open config file" << std::endl;

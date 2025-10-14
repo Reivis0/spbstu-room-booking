@@ -1,24 +1,30 @@
 #ifndef ASYNC_ROOM_SERVICE_HPP
 #define ASYNC_ROOM_SERVICE_HPP
 
-#include <include/genproto/message.grpc.pb.h>
-#include <include/genproto/message.pb.h>
+#include <message.grpc.pb.h>
+#include <message.pb.h>
 #include <grpcpp/grpcpp.h>
 
-#include <src/common/cahce/redis_async_client.hpp>
-#include <src/common/database/postgreSQL_async_client.hpp>
-#include <src/common/messaging/nats_async_client.hpp>
+#include <cache/redis_async_client.hpp>
+#include <database/postgreSQL_async_client.hpp>
+#include <messaging/nats_async_client.hpp>
 
 #include <string>
 #include <memory>
+#include <atomic>
+#include <thread>
 
 class AsyncRoomService
 {
 public:
-  AsyncRoomService(const std::string& adress) : m_adress(adress) {}
+  AsyncRoomService(
+    std::shared_ptr<RedisAsyncClient> redis_client,
+    std::shared_ptr<PostgreSQLAsyncClient> pg_client
+    //std::shared_ptr<NatsAsyncClient> nats_clien
+  );
   ~AsyncRoomService();
   void start();
-  void shutDown();
+  void shutdown();
 
 //CallData
 private:
@@ -34,7 +40,7 @@ private:
   class ComputeIntervalsCallData : public CallData
   {
   public:
-    ComputeIntervalsCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq);
+    ComputeIntervalsCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq, AsyncRoomService* room_service);
     void Proceed() override;
     void ProcessRequest();
     void ProcessWithCache();
@@ -45,6 +51,7 @@ private:
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
+      AsyncRoomService*  m_room_service;
       room_service::ComputeIntervalsRequest m_request;
       room_service::ComputeIntervalsResponse m_response;
       grpc::ServerAsyncResponseWriter<room_service::ComputeIntervalsResponse> m_responder;
@@ -55,7 +62,7 @@ private:
   class ValidateCallData : public CallData
   {
     public:
-    ValidateCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq);
+    ValidateCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq,  AsyncRoomService* room_service);
     void Proceed() override;
     void ProcessRequest();
     void CompleteRequest();
@@ -64,6 +71,7 @@ private:
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
+      AsyncRoomService*  m_room_service;
       room_service::ValidateRequest m_request;
       room_service::ValidateResponse m_response;
       grpc::ServerAsyncResponseWriter<room_service::ValidateResponse> m_responder;
@@ -74,7 +82,7 @@ private:
   class OcupiedIntervalsCallData : public CallData
   {
     public:
-    OcupiedIntervalsCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq);
+    OcupiedIntervalsCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq,  AsyncRoomService* room_service);
     void Proceed() override;
     void ProcessRequest();
     void CompleteRequest();
@@ -83,6 +91,7 @@ private:
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
+      AsyncRoomService*  m_room_service;
       room_service::OcupiedIntervalsRequest m_request;
       room_service::OcupiedIntervalsResponce m_response;
       grpc::ServerAsyncResponseWriter<room_service::OcupiedIntervalsResponce> m_responder;
@@ -97,9 +106,14 @@ private:
 
 //поля 
 private:
-  std::string  m_adress;
   room_service::RoomService::AsyncService m_service;
   std::unique_ptr<grpc::ServerCompletionQueue> m_cq;
   std::unique_ptr<grpc::Server> m_server;
+  std::atomic<bool> m_shutdown {false};
+  std::thread m_redis_thread;
+
+  std::shared_ptr<RedisAsyncClient> m_redis_client;
+  std::shared_ptr<PostgreSQLAsyncClient> m_pg_client;
+  //std::shared_ptr<NatsAsyncClient> m_nats_client;
 };
 #endif

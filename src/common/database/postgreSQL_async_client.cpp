@@ -3,6 +3,7 @@
 #include <fstream>
 #include <exception>
 #include <sstream>
+#include <iostream>
 
 PostgreSQLAsyncClient::Connector::Connector()
 {
@@ -17,11 +18,20 @@ PostgreSQLAsyncClient::Connector::Connector()
 std::map<std::string, std::string> PostgreSQLAsyncClient::Connector::read_config()
 {
   std::map<std::string, std::string> config;
-  std::ifstream file("/home/anns/поликек/3 курс/Конструирование ПО/spbstu-room-booking/include/configs/pg_config.ini");
+  std::ifstream file("configs/pg_config.ini");
+  
+  if (!file.is_open()) {
+    std::cerr << "Failed to open config file" << std::endl;
+    return config;
+  }
+  
   std::string line, section;
     
   while (getline(file, line)) 
   {
+    line.erase(0, line.find_first_not_of(" \t"));
+    line.erase(line.find_last_not_of(" \t") + 1);
+    
     if (line.empty() || line[0] == ';') continue;
         
     if (line[0] == '[' && line.back() == ']')
@@ -33,14 +43,20 @@ std::map<std::string, std::string> PostgreSQLAsyncClient::Connector::read_config
       size_t pos = line.find('=');
       if (pos != std::string::npos)
       {
-        std::string key = section + "." + line.substr(0, pos);
+        std::string key = line.substr(0, pos);
         std::string value = line.substr(pos + 1);
-        config[key] = value;
+        
+        key.erase(0, key.find_first_not_of(" \t"));
+        key.erase(key.find_last_not_of(" \t") + 1);
+        value.erase(0, value.find_first_not_of(" \t"));
+        value.erase(value.find_last_not_of(" \t") + 1);
+        
+        config[section + "." + key] = value;
       }
     }
   }
     
-    return config;
+  return config;
 }
 std::string PostgreSQLAsyncClient::Connector::get_connecting_str()
 {
@@ -63,6 +79,7 @@ void PostgreSQLAsyncClient::begin_async_connect()
   {
     m_connect.status = ConnectStatus::ERROR;
     m_connect.error_msg = "Failed to create connection object";
+    std::cout<<m_connect.error_msg<<std::endl;
     return;
   }
 
@@ -106,10 +123,19 @@ void PostgreSQLAsyncClient::begin_async_connect()
       m_connect.error_msg = "Unknown connection status";
       break;
   }
+  if(m_connect.status != ConnectStatus::ERROR)
+  {
+    std::cout<<"Connected PG"<<std::endl;
+  }
+  else 
+  {
+    std::cerr<<"Error connecteing PG"<<std::endl;
+  }
 }
 
 PostgreSQLAsyncClient::PostgreSQLAsyncClient()
 {
+  std::cout<<"Starting connect to PG\n";
   begin_async_connect();
 }
 
@@ -123,6 +149,7 @@ void PostgreSQLAsyncClient::disconnect()
       m_connect.socket_fd = -1;
       m_connect.is_connected = false;
   }
+  std::cout<<"disconnect PG"<<std::endl;
 }
 
 PostgreSQLAsyncClient::~PostgreSQLAsyncClient()
