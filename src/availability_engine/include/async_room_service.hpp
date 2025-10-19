@@ -57,6 +57,8 @@ private:
       grpc::ServerAsyncResponseWriter<room_service::ComputeIntervalsResponse> m_responder;
       enum CallStatus {CREATE, PROCESS, FINISH};
       CallStatus m_status;
+
+      bool m_done {false};
   };
   
   class ValidateCallData : public CallData
@@ -86,10 +88,9 @@ private:
     void Proceed() override;
     void ProcessRequest();
     void CompleteRequest();
+    void ProcessWithDataBase();
 
     private:
-      void OnPgResult(const Booking* rows, size_t n, bool ok, const char* err);
-
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
@@ -101,14 +102,6 @@ private:
       CallStatus m_status;
       
       bool m_done {false};
-  };
-
-  struct PgCb final : IBookingsByRoomDateCb
-  {
-    AsyncRoomService::OcupiedIntervalsCallData* self;
-    explicit PgCb(AsyncRoomService::OcupiedIntervalsCallData* s) : self(s) {}
-    void onBookings(Booking* rows, size_t n, bool ok, const char* err) override;
-
   };
 
 //методы
