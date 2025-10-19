@@ -33,9 +33,9 @@ int main()
     } catch (const std::exception& e)
     {
         std::cerr << "Exception: " << e.what() << std::endl;
-        return 1;
+        return EXIT_FAILURE;
     }
     
     std::cout << "Async Room Service stopped." << std::endl;
-    return 0;
+    return EXIT_SUCCESS;
 }

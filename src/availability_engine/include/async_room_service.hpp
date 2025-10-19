@@ -88,6 +88,8 @@ private:
     void CompleteRequest();
 
     private:
+      void OnPgResult(const Booking* rows, size_t n, bool ok, const char* err);
+
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
@@ -97,8 +99,17 @@ private:
       grpc::ServerAsyncResponseWriter<room_service::OcupiedIntervalsResponce> m_responder;
       enum CallStatus {CREATE, PROCESS, FINISH};
       CallStatus m_status;
+      
+      bool m_done {false};
   };
 
+  struct PgCb final : IBookingsByRoomDateCb
+  {
+    AsyncRoomService::OcupiedIntervalsCallData* self;
+    explicit PgCb(AsyncRoomService::OcupiedIntervalsCallData* s) : self(s) {}
+    void onBookings(Booking* rows, size_t n, bool ok, const char* err) override;
+
+  };
 
 //методы
 private:
@@ -115,5 +126,6 @@ private:
   std::shared_ptr<RedisAsyncClient> m_redis_client;
   std::shared_ptr<PostgreSQLAsyncClient> m_pg_client;
   //std::shared_ptr<NatsAsyncClient> m_nats_client;
+
 };
 #endif

@@ -1,5 +1,4 @@
 #include <async_room_service.hpp>
-
 #include <exception>
 
 //AvailableSlotsCallData
@@ -137,7 +136,48 @@ void AsyncRoomService::OcupiedIntervalsCallData::ProcessRequest()
 {
   try
   {
-   //обработка 
+    const std::string room_code = m_request.room_id();
+    const std::string day = m_request.date();
+    struct PgCb final : IBookingsByRoomDateCb
+    {
+      OcupiedIntervalsCallData* self;
+      explicit PgCb(AsyncRoomService::OcupiedIntervalsCallData* s) : self(s) {}
+      void onBookings(Booking* rows, size_t n, bool ok, const char* err) override
+      {
+        if(!ok)
+        {
+          if(self->m_done)
+          {
+            self->m_done = true;
+            self->m_responder.FinishWithError(
+              grpc::Status(grpc::StatusCode::INTERNAL, err ? err : "query failed"), self);
+            self->m_status = FINISH;
+          }
+          delete this;
+          return;
+        }
+        if(!self->m_done)
+        {
+          auto* resp = &self->m_response;
+          resp->clear_intervals();
+          resp->mutable_intervals()->Reserve(static_cast<int>(n));
+          for(size_t i = 0; i < n; ++i)
+          {
+            const Booking& b = rows[i];
+            auto it = resp ->add_intervals();
+            it->set_booking_id(b.id);
+            it->set_start_time(b.start_time);
+            it->set_end_time(b.end_time);
+            it->set_user_id(b.user_id);
+            it->set_note(b.notes);
+          }
+          self->CompleteRequest();
+        }
+        delete this;
+      }
+    };
+
+    m_room_service->m_pg_client->getBookingsByRoomAndDate(room_code.c_str(), day.c_str(), new PgCb(this));
   }
   catch(const std::exception& ex)
   {
@@ -177,6 +217,7 @@ AsyncRoomService::~AsyncRoomService()
   if (m_redis_client)
   {
     m_redis_client->stop_event_loop();
+    m_pg_client->stop();
   }
 }
 
