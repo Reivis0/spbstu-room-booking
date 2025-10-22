@@ -34,7 +34,7 @@ void AsyncRoomService::ComputeIntervalsCallData::ProcessRequest()
   try
   {
     ProcessWithDataBase();
-    //кешировать
+    ProcessWithCache();
   }
   catch(const std::exception& ex)
   {
@@ -189,14 +189,123 @@ void AsyncRoomService::ValidateCallData::Proceed()
   }
 }
 
+int AsyncRoomService::ValidateCallData::toMinutes(std::string& time)
+{ 
+  int H = 0, M = 0;
+  if (sscanf(time.c_str(), "%d:%d", &H, &M) == 2) {
+      return H * 60 + M;
+  }
+  
+  size_t t_pos = time.find('T');
+  if (t_pos != std::string::npos && time.length() >= t_pos + 6) {
+      std::string time_part = time.substr(t_pos + 1);
+      if (sscanf(time_part.c_str(), "%d:%d", &H, &M) == 2) {
+          return H * 60 + M;
+      }
+  }
+  return 0;
+}
+
+void AsyncRoomService::ValidateCallData::isCorrectData(ValidateData* vd, ValidateErrors& ve)
+{
+  int start = toMinutes(vd->m_start_time);
+  int end = toMinutes(vd->m_end_time);
+  if((9*60<=start && start<=21*60) && (9*60<=end && end<=21*60))
+  {
+    ve.m_working_hours = true;
+  }
+  if((end - start) >= 60)
+  {
+    ve.m_duration = true;
+  }
+}
+
+void AsyncRoomService::ValidateCallData::ProcessWithDataBase()
+{
+  const auto& room_id = m_request.room_id();
+  const auto& date = m_request.date();
+  const auto& start_time = m_request.start_time();
+  const auto& end_time = m_request.end_time();
+  
+  struct ConflictsCb final : IconflictsCb
+  {
+    ValidateCallData* self;
+    explicit ConflictsCb(ValidateCallData* ptr) : self(ptr) {}
+  
+    void onConflicts(Booking* rows, size_t n, bool ok, const char* err) override
+    {
+     if (!ok)
+     {
+      if (!self->m_done)
+      {
+        self->m_done = true;
+        self->m_responder.FinishWithError(
+        grpc::Status(grpc::StatusCode::INTERNAL, err ? err : "query failed"),
+          self);
+        self->m_status = FINISH;
+      }
+      delete this;
+      return;
+     }
+  
+     bool no_conflicts = (n == 0);
+     self->m_response.set_is_valid(no_conflicts);
+  
+     room_service::ValidationDetails* details = self->m_response.mutable_details();
+     details->set_duration_valid(true);
+     details->set_working_hours_valid(true);
+     details->set_no_conflicts(no_conflicts);
+  
+     auto* conflicts = self->m_response.mutable_conflicts();
+     conflicts->Clear();
+     for (size_t i=0; i<n; ++i)
+     {
+      const Booking& b = rows[i];
+      auto* c = conflicts->Add();
+      c->set_booking_id(b.id);
+      c->set_start_time(b.start_time);
+      c->set_end_time(b.end_time);
+      c->set_status(b.status);
+      c->set_user_id(b.user_id);
+      }
+  
+      if (!self->m_done)
+      {
+        self->m_done = true;
+        self->CompleteRequest();
+      }
+      delete this;
+    }
+  };
+  
+  m_room_service->m_pg_client->getConflictsByInterval(room_id.c_str(), start_time.c_str(), end_time.c_str(), new ConflictsCb(this));
+}
+   
+
 void AsyncRoomService::ValidateCallData::ProcessRequest()
 {
   try
   {
-   //обработка
-   //редис 
-   //постгра
-   //кешировать
+    ValidateData vd(m_request.room_id(), m_request.date(), m_request.start_time(), m_request.end_time());
+    ValidateErrors ve; 
+
+    isCorrectData(&vd, ve);
+
+    if(ve.m_working_hours && ve.m_duration)
+    {
+      //ProcessWithCache();
+      ProcessWithDataBase();
+      //кеширование
+    }
+    else 
+    {
+      m_response.set_is_valid(false);
+      auto* details = m_response.mutable_details();
+      details->set_duration_valid(ve.m_duration);
+      details->set_working_hours_valid(ve.m_working_hours);
+      details->set_no_conflicts(false);
+      CompleteRequest();
+    }
   }
   catch(const std::exception& ex)
   {
@@ -284,16 +393,22 @@ void AsyncRoomService::OcupiedIntervalsCallData::ProcessWithDataBase()
     m_room_service->m_pg_client->getBookingsByRoomAndDate(room_code.c_str(), day.c_str(), new PgCb(this));
 }
 
+void AsyncRoomService::OcupiedIntervalsCallData::ProcessWithCache()
+{
+  //кеширование
+}
+
 void AsyncRoomService::OcupiedIntervalsCallData::ProcessRequest()
 {
   try
   {
     ProcessWithDataBase();
-    //кешировать
+    ProcessWithCache();
   }
   catch(const std::exception& ex)
   {
     m_responder.FinishWithError(grpc::Status(grpc::StatusCode::INTERNAL, ex.what()), this);
+    std::cout<<ex.what()<<std::endl;
     m_status = FINISH;
   }
    

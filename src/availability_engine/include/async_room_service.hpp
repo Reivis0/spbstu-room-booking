@@ -68,6 +68,8 @@ private:
     void Proceed() override;
     void ProcessRequest();
     void CompleteRequest();
+    void ProcessWithCache();
+    void ProcessWithDataBase();
 
     private:
       room_service::RoomService::AsyncService* m_service;
@@ -79,6 +81,26 @@ private:
       grpc::ServerAsyncResponseWriter<room_service::ValidateResponse> m_responder;
       enum CallStatus {CREATE, PROCESS, FINISH};
       CallStatus m_status;
+
+      bool m_done {false};
+
+      struct ValidateData
+      {
+        ValidateData(std::string room_code, std::string date, std::string start_time, std::string end_time) :
+          m_room_code(room_code), m_date(date), m_start_time(start_time), m_end_time(end_time) {} 
+        std::string m_room_code;
+        std::string m_date;
+        std::string m_start_time;;
+        std::string m_end_time;
+      };
+      struct ValidateErrors
+      {
+        bool m_duration {false};
+        bool m_working_hours {false};
+        bool m_conflicts {false};
+      };
+      void isCorrectData(ValidateData* vd, ValidateErrors& ve);
+      int toMinutes(std::string& time);
   };
 
   class OcupiedIntervalsCallData : public CallData
@@ -89,6 +111,7 @@ private:
     void ProcessRequest();
     void CompleteRequest();
     void ProcessWithDataBase();
+    void ProcessWithCache();
 
     private:
       room_service::RoomService::AsyncService* m_service;
@@ -100,7 +123,7 @@ private:
       grpc::ServerAsyncResponseWriter<room_service::OcupiedIntervalsResponce> m_responder;
       enum CallStatus {CREATE, PROCESS, FINISH};
       CallStatus m_status;
-      
+        
       bool m_done {false};
   };
 
