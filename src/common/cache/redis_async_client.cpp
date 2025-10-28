@@ -276,3 +276,40 @@ void RedisAsyncClient::stop_event_loop()
     event_base_loopexit(m_connector.ev_base, nullptr);
   }
 }
+
+void RedisAsyncClient::genericCallback(redisAsyncContext* context, void* reply, void* privdata)
+{
+  IRedisCallback* cb = static_cast<IRedisCallback*>(privdata);
+  if(cb)
+  {
+    cb->onRedisReply(static_cast<redisReply*>(reply));
+  }
+}
+
+void RedisAsyncClient::get(const std::string& key, IRedisCallback* cb)
+{
+  if(!is_connected() || !cb)
+  {
+    if(cb)
+    {
+      cb->onRedisReply(nullptr);
+      delete cb;
+    }
+    return;
+  }
+  redisAsyncCommand(m_connector.context, genericCallback, cb,"GET %s", key.c_str());
+}
+
+void RedisAsyncClient::setex(const std::string& key, int ttl_seconds, const std::string& value, IRedisCallback* cb)
+{
+  if(!is_connected())
+  {
+    if(cb)
+    {
+      cb->onRedisReply(nullptr);
+      delete cb;
+    }
+    return;
+  }
+  redisAsyncCommand(m_connector.context, cb ? genericCallback : nullptr, cb, "SETEX %s %d %s", key.c_str(), ttl_seconds, value.c_str());
+}

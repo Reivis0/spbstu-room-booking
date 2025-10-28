@@ -12,6 +12,13 @@
 #include <thread>
 #include <chrono>
 
+class IRedisCallback
+{
+public:
+  virtual ~IRedisCallback() = default;
+  virtual void onRedisReply(redisReply* reply) = 0;
+};
+
 class RedisAsyncClient
 {
 public:
@@ -21,6 +28,9 @@ public:
   void run_event_loop();
   void stop_event_loop();
   bool is_connected() const { return m_connector.is_connected; }
+
+  void get(const std::string& key, IRedisCallback* cb);
+  void setex(const std::string& key, int ttl_seconds, const std::string& value, IRedisCallback* cb = nullptr);
 
 private:
   struct RedisConnector
@@ -51,6 +61,8 @@ private:
   static void pingCallback(redisAsyncContext* context, void* reply, void* privdata);
   static void disconnectCallback(const redisAsyncContext* context, int status);
   
+  static void genericCallback(redisAsyncContext* context, void* reply, void* privdata);
+
   void handleConnect(int status);
   void handleAuth(redisReply* reply);
   void handlePing(redisReply* reply);

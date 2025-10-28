@@ -8,6 +8,7 @@
 #include <cache/redis_async_client.hpp>
 #include <database/postgreSQL_async_client.hpp>
 #include <messaging/nats_async_client.hpp>
+#include <google/protobuf/util/json_util.h>
 
 #include <string>
 #include <memory>
@@ -68,7 +69,6 @@ private:
     void Proceed() override;
     void ProcessRequest();
     void CompleteRequest();
-    void ProcessWithCache();
     void ProcessWithDataBase();
 
     private:

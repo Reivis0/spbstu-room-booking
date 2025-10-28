@@ -28,12 +28,43 @@ void AsyncRoomService::ComputeIntervalsCallData::Proceed()
     delete this;
   }
 }
+void AsyncRoomService::ComputeIntervalsCallData::ProcessWithCache()
+{
+  std::string cahce_key = "roomservice:intervals:"+m_request.room_id() + ":" + m_request.date();
+  struct GetCb final : IRedisCallback
+  {
+    ComputeIntervalsCallData* self;
+    explicit GetCb(ComputeIntervalsCallData* s) : self(s) {}
+
+    void onRedisReply(redisReply* reply) override
+    {
+      if(reply && reply->type == REDIS_REPLY_STRING)
+      {
+        google::protobuf::util::JsonParseOptions options;
+        auto status = google::protobuf::util::JsonStringToMessage(reply->str, &self->m_response, options);
+        if(status.ok())
+        {
+          self->CompleteRequest();
+        }
+        else
+        {
+          self->ProcessWithDataBase();
+        }
+      }
+      else
+      {
+        self->ProcessWithDataBase();
+      }
+    }
+  };
+  m_room_service->m_redis_client->get(cahce_key, new GetCb(this));
+}
+
 
 void AsyncRoomService::ComputeIntervalsCallData::ProcessRequest()
 {
   try
   {
-    ProcessWithDataBase();
     ProcessWithCache();
   }
   catch(const std::exception& ex)
@@ -43,10 +74,6 @@ void AsyncRoomService::ComputeIntervalsCallData::ProcessRequest()
   }
 }
 
-void AsyncRoomService::ComputeIntervalsCallData::ProcessWithCache()
-{
-  //запись в редис Redis
-}
 
 void AsyncRoomService::ComputeIntervalsCallData::ProcessWithDataBase()
 {
@@ -147,6 +174,17 @@ void AsyncRoomService::ComputeIntervalsCallData::ProcessWithDataBase()
         }
         if(!self->m_done)
         {
+          std::string json_output;
+          google::protobuf::util::JsonPrintOptions options;
+          options.preserve_proto_field_names = true;
+          auto status = google::protobuf::util::MessageToJsonString(self->m_response, &json_output, options);
+          
+          if(status.ok())
+          {
+            std::string cache_key = "roomservice:intervals:" + self->m_request.room_id() + ":" + self->m_request.date();
+            const int TTL_SECONDS = 15*60;
+            self->m_room_service->m_redis_client->setex(cache_key, TTL_SECONDS, json_output);
+          }
           self->CompleteRequest();
         }
         delete this;
@@ -281,7 +319,8 @@ void AsyncRoomService::ValidateCallData::ProcessWithDataBase()
   std::string end_t = date + "T" + end_time;
   m_room_service->m_pg_client->getConflictsByInterval(room_id.c_str(), start_t.c_str(), end_t.c_str(), new ConflictsCb(this));
 }
-   
+
+
 
 void AsyncRoomService::ValidateCallData::ProcessRequest()
 {
@@ -294,9 +333,7 @@ void AsyncRoomService::ValidateCallData::ProcessRequest()
 
     if(ve.m_working_hours && ve.m_duration)
     {
-      //ProcessWithCache();
       ProcessWithDataBase();
-      //кеширование
     }
     else 
     {
@@ -352,6 +389,7 @@ void AsyncRoomService::OcupiedIntervalsCallData::ProcessWithDataBase()
 {
   const std::string room_code = m_request.room_id();
     const std::string day = m_request.date();
+
     struct PgCb final : IBookingsByRoomDateCb
     {
       OcupiedIntervalsCallData* self;
@@ -385,6 +423,19 @@ void AsyncRoomService::OcupiedIntervalsCallData::ProcessWithDataBase()
             it->set_user_id(b.user_id);
             it->set_note(b.notes);
           }
+          
+          std::string json_output;
+          google::protobuf::util::JsonPrintOptions options;
+          options.preserve_proto_field_names = true;
+          auto status = google::protobuf::util::MessageToJsonString(self->m_response, &json_output, options);
+
+          if(status.ok())
+          {
+            std::string cache_key = "roomservice:occupated:" + self->m_request.room_id() + ":" + self->m_request.date();
+            const int TTL_SECONDS = 15*60;
+            self->m_room_service->m_redis_client->setex(cache_key, TTL_SECONDS, json_output); 
+          }
+
           self->CompleteRequest();
         }
         delete this;
@@ -396,14 +447,40 @@ void AsyncRoomService::OcupiedIntervalsCallData::ProcessWithDataBase()
 
 void AsyncRoomService::OcupiedIntervalsCallData::ProcessWithCache()
 {
-  //кеширование
+  std::string cahce_key = "roomservice:occupated:"+m_request.room_id() + ":" + m_request.date();
+  struct GetCb final : IRedisCallback
+  {
+    OcupiedIntervalsCallData* self;
+    explicit GetCb(OcupiedIntervalsCallData* s) : self(s) {}
+
+    void onRedisReply(redisReply* reply) override
+    {
+      if(reply && reply->type == REDIS_REPLY_STRING)
+      {
+        google::protobuf::util::JsonParseOptions options;
+        auto status = google::protobuf::util::JsonStringToMessage(reply->str, &self->m_response, options);
+        if(status.ok())
+        {
+          self->CompleteRequest();
+        }
+        else
+        {
+          self->ProcessWithDataBase();
+        }
+      }
+      else
+      {
+        self->ProcessWithDataBase();
+      }
+    }
+  };
+  m_room_service->m_redis_client->get(cahce_key, new GetCb(this));
 }
 
 void AsyncRoomService::OcupiedIntervalsCallData::ProcessRequest()
 {
   try
   {
-    ProcessWithDataBase();
     ProcessWithCache();
   }
   catch(const std::exception& ex)
