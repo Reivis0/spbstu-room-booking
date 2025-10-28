@@ -277,8 +277,9 @@ void AsyncRoomService::ValidateCallData::ProcessWithDataBase()
       delete this;
     }
   };
-  
-  m_room_service->m_pg_client->getConflictsByInterval(room_id.c_str(), start_time.c_str(), end_time.c_str(), new ConflictsCb(this));
+  std::string start_t = date + "T" + start_time;
+  std::string end_t = date + "T" + end_time;
+  m_room_service->m_pg_client->getConflictsByInterval(room_id.c_str(), start_t.c_str(), end_t.c_str(), new ConflictsCb(this));
 }
    
 

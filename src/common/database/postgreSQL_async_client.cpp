@@ -402,7 +402,8 @@ void PostgreSQLAsyncClient::getConflictsByInterval(const char* room_id, const ch
             "''::text AS notes, "
             "b.status::text "
     "FROM bookings b "
-    "WHERE b.room_id = $1::uuid "
+    "JOIN rooms r ON b.room_id = r.id "
+    "WHERE r.code = $1 "
     "   AND b.status = 'confirmed' "
     "   AND tstzrange(b.starts_at, b.ends_at, '[)') "
     " && tstzrange($2::timestamptz, $3::timestamptz, '[)')";
