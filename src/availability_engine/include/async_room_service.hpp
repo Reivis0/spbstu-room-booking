@@ -20,8 +20,8 @@ class AsyncRoomService
 public:
   AsyncRoomService(
     std::shared_ptr<RedisAsyncClient> redis_client,
-    std::shared_ptr<PostgreSQLAsyncClient> pg_client
-    //std::shared_ptr<NatsAsyncClient> nats_clien
+    std::shared_ptr<PostgreSQLAsyncClient> pg_client,
+    std::shared_ptr<NatsAsyncClient> nats_client
   );
   ~AsyncRoomService();
   void start();
@@ -141,7 +141,7 @@ private:
 
   std::shared_ptr<RedisAsyncClient> m_redis_client;
   std::shared_ptr<PostgreSQLAsyncClient> m_pg_client;
-  //std::shared_ptr<NatsAsyncClient> m_nats_client;
+  std::shared_ptr<NatsAsyncClient> m_nats_client;
 
 };
 #endif

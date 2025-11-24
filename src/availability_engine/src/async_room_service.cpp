@@ -184,6 +184,10 @@ void AsyncRoomService::ComputeIntervalsCallData::ProcessWithDataBase()
             std::string cache_key = "roomservice:intervals:" + self->m_request.room_id() + ":" + self->m_request.date();
             const int TTL_SECONDS = 15*60;
             self->m_room_service->m_redis_client->setex(cache_key, TTL_SECONDS, json_output);
+            if(self->m_room_service->m_nats_client)
+            {
+              self->m_room_service->m_nats_client->publishScheduleRefreshed(self->m_request.room_id(), self->m_request.date());
+            }
           }
           self->CompleteRequest();
         }
@@ -501,9 +505,9 @@ void AsyncRoomService::OcupiedIntervalsCallData::CompleteRequest()
 
 AsyncRoomService::AsyncRoomService(
   std::shared_ptr<RedisAsyncClient> redis_client,
-    std::shared_ptr<PostgreSQLAsyncClient> pg_client
-    //std::shared_ptr<NatsAsyncClient> nats_clien
-) : m_redis_client(redis_client), m_pg_client(pg_client) 
+    std::shared_ptr<PostgreSQLAsyncClient> pg_client,
+    std::shared_ptr<NatsAsyncClient> nats_client
+) : m_redis_client(redis_client), m_pg_client(pg_client), m_nats_client(nats_client)
 {
   if (m_redis_client) {
     m_redis_thread = std::thread([this]()

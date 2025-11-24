@@ -1,6 +1,7 @@
 #include "async_room_service.hpp"
 #include <iostream>
 #include <signal.h>
+#include <messaging/nats_async_client.hpp>
 
 std::unique_ptr<AsyncRoomService> service;
 
@@ -22,10 +23,10 @@ int main()
     {
         auto redis_client = std::make_shared<RedisAsyncClient>();
         auto pg_client = std::make_shared<PostgreSQLAsyncClient>();
-        
+        auto nats_client = std::make_shared<NatsAsyncClient>();
         // Создаем и запускаем сервис
         service = std::make_unique<AsyncRoomService>(
-            redis_client, pg_client);
+            redis_client, pg_client, nats_client);
         
         std::cout << "Async Room Service starting..." << std::endl;
         service->start();
