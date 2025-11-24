@@ -1,7 +1,7 @@
 #include <async_room_service.hpp>
+#include "logger.hpp"
 #include <exception>
-
-//AvailableSlotsCallData
+#include <iostream> 
 
 AsyncRoomService::ComputeIntervalsCallData::ComputeIntervalsCallData(
     room_service::RoomService::AsyncService* service,
@@ -60,7 +60,6 @@ void AsyncRoomService::ComputeIntervalsCallData::ProcessWithCache()
   m_room_service->m_redis_client->get(cahce_key, new GetCb(this));
 }
 
-
 void AsyncRoomService::ComputeIntervalsCallData::ProcessRequest()
 {
   try
@@ -73,7 +72,6 @@ void AsyncRoomService::ComputeIntervalsCallData::ProcessRequest()
     m_status = FINISH;
   }
 }
-
 
 void AsyncRoomService::ComputeIntervalsCallData::ProcessWithDataBase()
 {
@@ -196,7 +194,6 @@ void AsyncRoomService::ComputeIntervalsCallData::ProcessWithDataBase()
     };
     
     m_room_service->m_pg_client->getBookingsByRoomAndDate(room_code.c_str(), day.c_str(), new PgCb(this, day, req_start, req_end));
-
 }
 
 void AsyncRoomService::ComputeIntervalsCallData::CompleteRequest()
@@ -204,8 +201,6 @@ void AsyncRoomService::ComputeIntervalsCallData::CompleteRequest()
   m_status = FINISH;
   m_responder.Finish(m_response, grpc::Status::OK, this);
 }
-
-//ValidateCallData
 
 AsyncRoomService::ValidateCallData::ValidateCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq,AsyncRoomService* room_service) :
   m_service(service), m_cq(cq),m_room_service(room_service), m_responder(&m_ctx), m_status(CREATE)
@@ -324,8 +319,6 @@ void AsyncRoomService::ValidateCallData::ProcessWithDataBase()
   m_room_service->m_pg_client->getConflictsByInterval(room_id.c_str(), start_t.c_str(), end_t.c_str(), new ConflictsCb(this));
 }
 
-
-
 void AsyncRoomService::ValidateCallData::ProcessRequest()
 {
   try
@@ -354,7 +347,6 @@ void AsyncRoomService::ValidateCallData::ProcessRequest()
     m_responder.FinishWithError(grpc::Status(grpc::StatusCode::INTERNAL, ex.what()), this);
     m_status = FINISH;
   }
-   
 }
 
 void AsyncRoomService::ValidateCallData::CompleteRequest()
@@ -362,8 +354,6 @@ void AsyncRoomService::ValidateCallData::CompleteRequest()
   m_status = FINISH;
   m_responder.Finish(m_response, grpc::Status::OK, this);
 }
-
-//OcupiedIntervalsCallData
 
 AsyncRoomService::OcupiedIntervalsCallData::OcupiedIntervalsCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq, AsyncRoomService* room_service) :
   m_service(service), m_cq(cq),m_room_service(room_service), m_responder(&m_ctx), m_status(CREATE)
@@ -490,10 +480,9 @@ void AsyncRoomService::OcupiedIntervalsCallData::ProcessRequest()
   catch(const std::exception& ex)
   {
     m_responder.FinishWithError(grpc::Status(grpc::StatusCode::INTERNAL, ex.what()), this);
-    std::cout<<ex.what()<<std::endl;
+    LOG_ERROR(ex.what());
     m_status = FINISH;
   }
-   
 }
 
 void AsyncRoomService::OcupiedIntervalsCallData::CompleteRequest()
@@ -502,19 +491,18 @@ void AsyncRoomService::OcupiedIntervalsCallData::CompleteRequest()
   m_responder.Finish(m_response, grpc::Status::OK, this);
 }
 
-
 AsyncRoomService::AsyncRoomService(
   std::shared_ptr<RedisAsyncClient> redis_client,
     std::shared_ptr<PostgreSQLAsyncClient> pg_client,
     std::shared_ptr<NatsAsyncClient> nats_client
-) : m_redis_client(redis_client), m_pg_client(pg_client), m_nats_client(nats_client)
+) : m_redis_client(redis_client), m_pg_client(pg_client), m_nats_client(nats_client) 
 {
   if (m_redis_client) {
     m_redis_thread = std::thread([this]()
     {
-        std::cout << "Starting Redis event loop..." << std::endl;
+        LOG_INFO("Starting Redis event loop...");
         m_redis_client->run_event_loop();
-        std::cout << "Redis event loop finished" << std::endl;
+        LOG_INFO("Redis event loop finished");
     });
     m_redis_thread.detach();
 }
@@ -539,8 +527,6 @@ void AsyncRoomService::start()
   builder.RegisterService(&m_service);
   m_cq = builder.AddCompletionQueue();
   m_server = builder.BuildAndStart();
-
-  //подписка на nats
 
   new ComputeIntervalsCallData(&m_service, m_cq.get(), this);
   new ValidateCallData(&m_service, m_cq.get(), this);

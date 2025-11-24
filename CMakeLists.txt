@@ -15,6 +15,9 @@ set(NATS_BUILD_WITH_TLS OFF CACHE BOOL "" FORCE)
 set(NATS_BUILD_STREAMING OFF CACHE BOOL "" FORCE)
 set(NATS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
+FetchContent_MakeAvailable(cnats)
+
+add_subdirectory(log)
 add_subdirectory(protos)
 add_subdirectory(src)
 

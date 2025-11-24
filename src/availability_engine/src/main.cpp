@@ -1,13 +1,13 @@
 #include "async_room_service.hpp"
+#include "logger.hpp"
 #include <iostream>
 #include <signal.h>
-#include <messaging/nats_async_client.hpp>
 
 std::unique_ptr<AsyncRoomService> service;
 
 void SignalHandler(int signal) 
 {
-    std::cout << "Received signal " << signal << ", shutting down..." << std::endl;
+    LOG_INFO("Received signal " + std::to_string(signal) + ", shutting down...");
     if (service)
     {
         service->shutdown();
@@ -21,22 +21,24 @@ int main()
     
     try
     {
+        Logger::getInstance().init();
+
         auto redis_client = std::make_shared<RedisAsyncClient>();
         auto pg_client = std::make_shared<PostgreSQLAsyncClient>();
         auto nats_client = std::make_shared<NatsAsyncClient>();
-        // Создаем и запускаем сервис
+        
         service = std::make_unique<AsyncRoomService>(
             redis_client, pg_client, nats_client);
         
-        std::cout << "Async Room Service starting..." << std::endl;
+        LOG_INFO("Async Room Service starting...");
         service->start();
         
     } catch (const std::exception& e)
     {
-        std::cerr << "Exception: " << e.what() << std::endl;
+        LOG_ERROR(std::string("Exception: ") + e.what());
         return EXIT_FAILURE;
     }
     
-    std::cout << "Async Room Service stopped." << std::endl;
+    LOG_INFO("Async Room Service stopped.");
     return EXIT_SUCCESS;
 }

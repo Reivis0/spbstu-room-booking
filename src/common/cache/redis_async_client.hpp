@@ -1,6 +1,7 @@
 #ifndef REDIS_ASYNC_CLIENT_HPP
 #define REDIS_ASYNC_CLIENT_HPP
 
+#include <logger.hpp>
 #include <hiredis/hiredis.h>
 #include <hiredis/async.h>
 #include <hiredis/adapters/libevent.h>

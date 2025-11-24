@@ -1,6 +1,7 @@
 #ifndef NATS_ASYNC_CLIENT_HPP
 #define NATS_ASYNC_CLIENT_HPP
 
+#include <logger.hpp>
 #include <nats/nats.h>
 #include <string>
 #include <functional>

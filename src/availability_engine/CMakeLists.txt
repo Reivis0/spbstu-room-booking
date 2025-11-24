@@ -25,6 +25,7 @@ target_include_directories(availability_engine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/genproto
+    ${CMAKE_SOURCE_DIR}/log
     ${CMAKE_SOURCE_DIR}/src/common
     ${REDIS_INCLUDE_DIRS}
     ${POSTGRESQL_INCLUDE_DIRS}

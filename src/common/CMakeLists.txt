@@ -26,6 +26,7 @@ target_include_directories(common_lib PRIVATE
 
 target_link_libraries(common_lib PUBLIC
     protos_lib
+    logger_lib
     ${REDIS_LIBRARIES}
     ${POSTGRESQL_LIBRARIES}
     nats_static 

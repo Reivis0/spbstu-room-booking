@@ -1,6 +1,7 @@
 #ifndef POSTGRESQL_ASYNC_CLIENT_HPP
 #define POSTGRESQL_ASYNC_CLIENT_HPP
 
+#include <logger.hpp>
 #include <libpq-fe.h>
 #include <string>
 #include <map>

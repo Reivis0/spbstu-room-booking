@@ -1,4 +1,5 @@
 #include "nats_async_client.hpp"
+#include <iostream>
 
 std::map<std::string, std::string> NatsAsyncClient::read_config()
 {
@@ -6,7 +7,7 @@ std::map<std::string, std::string> NatsAsyncClient::read_config()
   std::ifstream file("configs/nats_config.ini");
   
   if (!file.is_open()) {
-    std::cerr << "Failed to open config file" << std::endl;
+    LOG_ERROR("Failed to open config file");
     return config;
   }
   
@@ -48,9 +49,15 @@ NatsAsyncClient::NatsAsyncClient()
 {
     auto config = read_config();
     m_nats_connect.m_host = config["booking_service.host"];
-    m_nats_connect.m_client_port = std::stoi(config["booking_service.client_port"]);
+    if (m_nats_connect.m_host.empty()) m_nats_connect.m_host = "localhost";
 
-    m_url = "nats://" + m_nats_connect.m_host + ":"+ std::to_string(m_nats_connect.m_client_port);
+    try {
+        m_nats_connect.m_client_port = std::stoi(config["booking_service.client_port"]);
+    } catch(...) {
+        m_nats_connect.m_client_port = 4222;
+    }
+
+    m_url = "nats://" + m_nats_connect.m_host + ":" + std::to_string(m_nats_connect.m_client_port);
     
     connect();
 }
@@ -65,7 +72,6 @@ NatsAsyncClient::~NatsAsyncClient()
         natsOptions_Destroy(m_opts);
     }
 }
-
 
 std::string NatsAsyncClient::trim(const std::string& str)
 {
@@ -85,9 +91,9 @@ void NatsAsyncClient::connect()
     }
 
     if (s != NATS_OK) {
-        std::cerr << "Failed to connect to NATS at " << m_url << ": " << natsStatus_GetText(s) << std::endl;
+        LOG_ERROR("Failed to connect to NATS at " + m_url + ": " + natsStatus_GetText(s));
     } else {
-        std::cout << "Connected to NATS at " << m_url << std::endl;
+        LOG_INFO("Connected to NATS at " + m_url);
     }
 }
 
@@ -97,7 +103,7 @@ void NatsAsyncClient::publish(const std::string& subject, const std::string& dat
 
     natsStatus s = natsConnection_Publish(m_conn, subject.c_str(), data.c_str(), data.size());
     if (s != NATS_OK) {
-        std::cerr << "NATS Publish error: " << natsStatus_GetText(s) << std::endl;
+        LOG_ERROR(std::string("NATS Publish error: ") + natsStatus_GetText(s));
     }
 }
 
