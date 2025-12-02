@@ -8,6 +8,7 @@ import java.util.UUID;
 @Table(name = "rooms")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Room {
+
     @Id
     @GeneratedValue
     private UUID id;
@@ -25,12 +26,11 @@ public class Room {
     private Integer capacity;
 
     @Column(columnDefinition = "jsonb")
-    private String features; // например: '{"projector":true,"whiteboard":true}'
+    private String features;
 
     @PrePersist
-    public void pre() {
+    public void prePersist() {
         if (id == null) id = UUID.randomUUID();
         if (features == null) features = "{}";
     }
 }
-

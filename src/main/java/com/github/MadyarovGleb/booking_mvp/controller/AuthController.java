@@ -26,14 +26,14 @@ public class AuthController {
     public ResponseEntity<?> login(@RequestBody AuthRequests req) {
         var u = authService.authenticate(req.getEmail(), req.getPassword());
         if (u == null) return ResponseEntity.status(401).body(Map.of("error","invalid_credentials"));
-        var accessToken = jwtUtil.generate(u.getId(), u.getEmail(), u.getRole());
-        var refreshToken = jwtUtil.generate(u.getId(), u.getEmail(), u.getRole()); // для MVP используем такой же JWT
+        var accessToken = jwtUtil.generate(u.getId(), u.getEmail(), u.getRole().name());
+        var refreshToken = jwtUtil.generate(u.getId(), u.getEmail(), u.getRole().name());
         return ResponseEntity.ok(Map.of(
                 "access_token", accessToken,
                 "refresh_token", refreshToken,
                 "profile", Map.of(
                         "email", u.getEmail(),
-                        "role", u.getRole(),
+                        "role", u.getRole().name(),
                         "id", u.getId()
                 )
         ));
@@ -79,7 +79,7 @@ public class AuthController {
                 "email", maskEmail(user.getEmail()),
                 "firstname", user.getFirstname(),
                 "lastname", user.getLastname(),
-                "role", user.getRole()
+                "role", user.getRole().name()
         ));
     }
 

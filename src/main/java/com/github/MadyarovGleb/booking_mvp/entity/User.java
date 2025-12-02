@@ -9,6 +9,7 @@ import java.util.UUID;
 @Table(name = "users")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class User {
+
     @Id
     @GeneratedValue
     private UUID id;
@@ -25,29 +26,25 @@ public class User {
     @Column(nullable = false)
     private String lastname;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String role; // "student", "teacher", "admin", "dispatcher"
+    private Role role;
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private OffsetDateTime updatedAt;
+
+    public enum Role { student, teacher, dispatcher, admin }
 
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID();
+        if (role == null) role = Role.student;
         if (isActive == null) isActive = true;
-        var now = OffsetDateTime.now();
-        if (createdAt == null) createdAt = now;
-        updatedAt = now;
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = OffsetDateTime.now();
     }
 }

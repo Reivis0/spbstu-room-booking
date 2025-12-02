@@ -23,14 +23,20 @@ public class AuthService {
             var u = User.builder()
                     .email("student@arch.local")
                     .passwordHash(encoder.encode("password"))
-                    .firstname("Student").lastname("One").role("student").build();
+                    .firstname("Student")
+                    .lastname("One")
+                    .role(User.Role.student)   // ← исправлено
+                    .build();
             userRepository.save(u);
         }
         if (userRepository.findByEmail("admin@arch.local").isEmpty()) {
             var a = User.builder()
                     .email("admin@arch.local")
                     .passwordHash(encoder.encode("adminpass"))
-                    .firstname("Admin").lastname("Root").role("admin").build();
+                    .firstname("Admin")
+                    .lastname("Root")
+                    .role(User.Role.admin)     // ← исправлено
+                    .build();
             userRepository.save(a);
         }
     }

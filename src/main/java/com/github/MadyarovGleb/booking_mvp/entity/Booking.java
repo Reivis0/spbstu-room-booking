@@ -9,6 +9,7 @@ import java.util.UUID;
 @Table(name = "bookings")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Booking {
+
     @Id
     @GeneratedValue
     private UUID id;
@@ -21,27 +22,27 @@ public class Booking {
 
     @Column(name = "starts_at", nullable = false)
     private OffsetDateTime startsAt;
+
     @Column(name = "ends_at", nullable = false)
     private OffsetDateTime endsAt;
 
     @Enumerated(EnumType.STRING)
-    private BookingStatus status = BookingStatus.pending;
+    @Column(nullable = false)
+    private BookingStatus status;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
-    @Column(name = "updated_at")
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private OffsetDateTime updatedAt;
 
-    public enum BookingStatus { pending, confirmed, cancelled, rejected }
-
-    @PrePersist
-    public void pre() {
-        if (id == null) id = UUID.randomUUID();
-        if (createdAt == null) createdAt = OffsetDateTime.now();
-        updatedAt = OffsetDateTime.now();
+    public enum BookingStatus {
+        pending, confirmed, cancelled, rejected
     }
 
-    @PreUpdate
-    public void preUpdate() { updatedAt = OffsetDateTime.now(); }
+    @PrePersist
+    public void prePersist() {
+        if (id == null) id = UUID.randomUUID();
+        if (status == null) status = BookingStatus.pending;
+    }
 }
-

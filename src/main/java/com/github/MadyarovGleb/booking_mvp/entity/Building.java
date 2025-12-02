@@ -8,6 +8,7 @@ import java.util.UUID;
 @Table(name = "buildings")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Building {
+
     @Id
     @GeneratedValue
     private UUID id;
@@ -22,7 +23,7 @@ public class Building {
     private String address;
 
     @PrePersist
-    public void pre() {
+    public void prePersist() {
         if (id == null) id = UUID.randomUUID();
     }
 }

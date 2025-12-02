@@ -9,6 +9,7 @@ import java.util.UUID;
 @Table(name = "schedules_import")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class SchedulesImport {
+
     @Id
     @GeneratedValue
     private UUID id;
@@ -31,17 +32,12 @@ public class SchedulesImport {
     @Column(columnDefinition = "jsonb")
     private String metadata;
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at", insertable = false)
     private OffsetDateTime updatedAt;
 
     @PrePersist
-    public void pre() {
+    public void prePersist() {
         if (id == null) id = UUID.randomUUID();
-        if (updatedAt == null) updatedAt = OffsetDateTime.now();
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = OffsetDateTime.now();
+        if (metadata == null) metadata = "{}";
     }
 }
