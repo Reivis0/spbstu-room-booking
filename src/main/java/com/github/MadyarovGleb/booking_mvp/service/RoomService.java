@@ -5,6 +5,7 @@ import com.github.MadyarovGleb.booking_mvp.repository.RoomRepository;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
@@ -13,26 +14,24 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final AvailabilityEngineClient availability;
+    private final RedisService redis;
 
     public RoomService(RoomRepository roomRepository,
-                       AvailabilityEngineClient availability) {
+                       AvailabilityEngineClient availability,
+                       RedisService redis) {
         this.roomRepository = roomRepository;
         this.availability = availability;
+        this.redis = redis;
     }
-
-    // ───────────────────────────────────────────────
-    // ВСПОМОГАТЕЛЬНЫЙ МЕТОД — заглушка для кэша
-    private <T> T getFromCache(String key) {
-        return null; // Redis не подключён
-    }
-
-    private void putToCache(String key, Object value, int minutes) {
-        // Redis не подключён — ничего не делаем
-    }
-    // ───────────────────────────────────────────────
 
     public Room getById(UUID id) {
-        return roomRepository.findById(id).orElseThrow();
+        String key = "room:metadata:" + id;
+        Room cached = redis.get(key, Room.class);
+        if (cached != null) return cached;
+
+        Room room = roomRepository.findById(id).orElseThrow();
+        redis.set(key, room, Duration.ofHours(1));
+        return room;
     }
 
     public List<Room> search(UUID buildingId, Integer capacityMin, Integer capacityMax,
@@ -40,27 +39,27 @@ public class RoomService {
 
         String cacheKey = String.format("rooms:search:%s:%s:%s:%s:%s:%s",
                 buildingId, capacityMin, capacityMax, features, search, availableFrom + "-" + availableTo);
-
-        List<Room> cached = getFromCache(cacheKey);
+        List<Room> cached = redis.get(cacheKey, List.class);
         if (cached != null) return cached;
 
-        List<Room> rooms = roomRepository.findAll(); // Здесь можно добавить фильтры
+        List<Room> rooms = roomRepository.findAll(); // TODO: добавить фильтры по buildingId, capacity, features, search
 
+        // фильтрация по availability
         if (availableFrom != null && availableTo != null) {
             rooms.removeIf(room -> availability.computeIntervals(room.getId().toString(), availableFrom).isEmpty());
         }
 
-        putToCache(cacheKey, rooms, 10);
+        redis.set(cacheKey, rooms, Duration.ofMinutes(10));
         return rooms;
     }
 
     public List<room_service.RoomServiceOuterClass.TimeSlot> getAvailability(UUID roomId, String date, int minDurationMinutes) {
         String cacheKey = String.format("availability:%s:%s", roomId, date);
-        List<room_service.RoomServiceOuterClass.TimeSlot> cached = getFromCache(cacheKey);
+        List<room_service.RoomServiceOuterClass.TimeSlot> cached = redis.get(cacheKey, List.class);
         if (cached != null) return cached;
 
         List<room_service.RoomServiceOuterClass.TimeSlot> slots = availability.computeIntervals(roomId.toString(), date);
-        putToCache(cacheKey, slots, 10);
+        redis.set(cacheKey, slots, Duration.ofMinutes(5));
         return slots;
     }
 }

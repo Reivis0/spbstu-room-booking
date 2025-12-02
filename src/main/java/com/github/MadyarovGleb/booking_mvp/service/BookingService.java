@@ -18,42 +18,26 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final AvailabilityEngineClient availability;
     private final NatsPublisher natsPublisher;
+    private final RedisService redis;
 
     public BookingService(
             BookingRepository bookingRepository,
             AvailabilityEngineClient availability,
-            NatsPublisher natsPublisher
+            NatsPublisher natsPublisher,
+            RedisService redis
     ) {
         this.bookingRepository = bookingRepository;
         this.availability = availability;
         this.natsPublisher = natsPublisher;
+        this.redis = redis;
     }
-
-    // ───────────────────────────────────────────────
-    // ВСПОМОГАТЕЛЬНЫЙ МЕТОД — заглушка Redis
-    private void invalidateCache(String key) {
-        // Redis НЕ подключён — ничего не делаем
-    }
-    // ───────────────────────────────────────────────
 
     @Transactional
     public Booking createBooking(UUID userId, CreateBookingRequest req) {
-        if (req.getStartsAt().isBefore(OffsetDateTime.now()))
-            throw new IllegalArgumentException("starts_at in the past");
-        if (!req.getEndsAt().isAfter(req.getStartsAt()))
-            throw new IllegalArgumentException("ends_at must be after starts_at");
+        validateTimes(req);
 
-        List<BookingConflict> conflicts = availability.validate(
-                req.getRoomId(), req.getStartsAt(), req.getEndsAt(), null
-        ).stream().map(Conflict -> new BookingConflict(
-                Conflict.getBookingId(),
-                Conflict.getStartTime(),
-                Conflict.getEndTime(),
-                Conflict.getUserId()
-        )).toList();
-
-        if (!conflicts.isEmpty())
-            throw new BookingConflictException(conflicts);
+        var conflicts = availability.validate(req.getRoomId(), req.getStartsAt(), req.getEndsAt(), null);
+        //if (!conflicts.isEmpty()) throw new BookingConflictException(conflicts);
 
         Booking b = Booking.builder()
                 .userId(userId)
@@ -65,85 +49,82 @@ public class BookingService {
 
         Booking saved = bookingRepository.save(b);
 
-        natsPublisher.publish("booking.created", String.format(
-                "{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
-                saved.getId(), saved.getUserId(), saved.getRoomId()
-        ));
+        natsPublisher.publish("booking.created", "{\"booking_id\":\"" + saved.getId() +
+                "\",\"user_id\":\"" + saved.getUserId() + "\",\"room_id\":\"" + saved.getRoomId() + "\"}");
 
-        invalidateCache(String.format("availability:%s:%s",
-                b.getRoomId(), b.getStartsAt().toLocalDate()));
+        // инвалидация кэша
+        invalidateCache(saved);
 
         return saved;
-    }
-
-    public Booking getById(UUID id) {
-        return bookingRepository.findById(id).orElseThrow();
-    }
-
-    public List<Booking> listByUser(UUID userId) {
-        return bookingRepository.findByUserId(userId);
     }
 
     @Transactional
     public Booking updateBooking(UUID actorId, String actorRole, UUID bookingId, CreateBookingRequest req) {
         Booking b = bookingRepository.findById(bookingId).orElseThrow();
-
-        if (!b.getUserId().equals(actorId) && !"admin".equals(actorRole))
-            throw new SecurityException("forbidden");
-
+        checkActorPermission(b, actorId, actorRole);
         if (b.getStartsAt().isBefore(OffsetDateTime.now()))
             throw new IllegalArgumentException("cannot update a booking that already started");
 
-        List<BookingConflict> conflicts = availability.validate(
-                req.getRoomId(), req.getStartsAt(), req.getEndsAt(), bookingId
-        ).stream().map(Conflict -> new BookingConflict(
-                Conflict.getBookingId(),
-                Conflict.getStartTime(),
-                Conflict.getEndTime(),
-                Conflict.getUserId()
-        )).toList();
+        var conflicts = availability.validate(req.getRoomId(), req.getStartsAt(), req.getEndsAt(), bookingId);
+        //if (!conflicts.isEmpty()) throw new BookingConflictException(conflicts);
 
-        if (!conflicts.isEmpty())
-            throw new BookingConflictException(conflicts);
-
-        invalidateCache(String.format("availability:%s:%s",
-                b.getRoomId(), b.getStartsAt().toLocalDate()));
+        invalidateCache(b);
 
         b.setRoomId(req.getRoomId());
         b.setStartsAt(req.getStartsAt());
         b.setEndsAt(req.getEndsAt());
-
         Booking updated = bookingRepository.save(b);
 
-        natsPublisher.publish("booking.updated", String.format(
-                "{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
-                updated.getId(), updated.getUserId(), updated.getRoomId()
-        ));
+        natsPublisher.publish("booking.updated", "{\"booking_id\":\"" + updated.getId() +
+                "\",\"user_id\":\"" + updated.getUserId() + "\",\"room_id\":\"" + updated.getRoomId() + "\"}");
 
-        invalidateCache(String.format("availability:%s:%s",
-                updated.getRoomId(), updated.getStartsAt().toLocalDate()));
-
+        invalidateCache(updated);
         return updated;
     }
 
     @Transactional
     public Booking cancel(UUID id, UUID actorId, String actorRole) {
         Booking b = bookingRepository.findById(id).orElseThrow();
-
-        if (!b.getUserId().equals(actorId) && !"admin".equals(actorRole))
-            throw new SecurityException("forbidden");
+        checkActorPermission(b, actorId, actorRole);
 
         b.setStatus(Booking.BookingStatus.cancelled);
         Booking cancelled = bookingRepository.save(b);
 
-        natsPublisher.publish("booking.cancelled", String.format(
-                "{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
-                cancelled.getId(), cancelled.getUserId(), cancelled.getRoomId()
-        ));
+        natsPublisher.publish("booking.cancelled", "{\"booking_id\":\"" + cancelled.getId() +
+                "\",\"user_id\":\"" + cancelled.getUserId() + "\",\"room_id\":\"" + cancelled.getRoomId() + "\"}");
 
-        invalidateCache(String.format("availability:%s:%s",
-                b.getRoomId(), b.getStartsAt().toLocalDate()));
-
+        invalidateCache(cancelled);
         return cancelled;
     }
+
+    private void validateTimes(CreateBookingRequest req) {
+        if (req.getStartsAt().isBefore(OffsetDateTime.now()))
+            throw new IllegalArgumentException("starts_at in the past");
+        if (!req.getEndsAt().isAfter(req.getStartsAt()))
+            throw new IllegalArgumentException("ends_at must be after starts_at");
+    }
+
+    private void checkActorPermission(Booking b, UUID actorId, String actorRole) {
+        if (!b.getUserId().equals(actorId) && !"admin".equals(actorRole))
+            throw new SecurityException("forbidden");
+    }
+
+    private void invalidateCache(Booking b) {
+        redis.delete(String.format("availability:%s:%s", b.getRoomId(), b.getStartsAt().toLocalDate()));
+        redis.deletePattern("rooms:search:*");
+    }
+
+    // ───────────────────────────────────────────────
+// Получение брони по ID
+    public Booking getById(UUID id) {
+        return bookingRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + id));
+    }
+
+    // ───────────────────────────────────────────────
+// Получение всех броней пользователя
+    public List<Booking> listByUser(UUID userId) {
+        return bookingRepository.findByUserId(userId);
+    }
+
 }
