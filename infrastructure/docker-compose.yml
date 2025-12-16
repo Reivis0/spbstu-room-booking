@@ -106,7 +106,8 @@ services:
     command: ["-js", "-sd", "/data"]
     stop_signal: SIGTERM
     stop_grace_period: 180s
-# В будущем добавить дописанный и настроекнный nginx
+
+# TODO: В будущем добавить дописанный и настроекнный nginx
 
 volumes:
   postgres_data:
