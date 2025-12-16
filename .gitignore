@@ -3,3 +3,6 @@ build/
 include/genproto/
 include/configs/*.ini
 logs/
+.env
+*.bin
+
