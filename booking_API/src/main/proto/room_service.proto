@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package room_service;
+
+option java_multiple_files = true;
+option java_package = "room_service";
+option java_outer_classname = "RoomServiceOuterClass";
+
+message TimeSlot {
+  string start_time = 1;
+  string end_time = 2;
+}
+
+message Conflict {
+  string booking_id = 1;
+  string start_time = 2;
+  string end_time = 3;
+  string user_id = 4;
+  string status = 5;
+}
+
+message ValidationDetails {
+  bool duration_valid = 1;
+  bool working_hours_valid = 2;
+  bool no_conflicts = 3;
+}
+
+message ComputeIntervalsRequest {
+  string room_id = 1;
+  string date = 2;
+  string start_time = 3;
+  string end_time = 4;
+}
+
+message ComputeIntervalsResponse {
+  repeated TimeSlot available_slots = 1;
+}
+
+message ValidateRequest {
+  string room_id = 1;
+  string date = 2;
+  string start_time = 3;
+  string end_time = 4;
+}
+
+message ValidateResponse {
+  bool is_valid = 1;
+  ValidationDetails details = 2;
+  repeated Conflict conflicts = 3;
+}
+
+message OccupiedIntervalsRequest {
+  string room_id = 1;
+  string date = 2;
+}
+
+message OccupiedSlotProto {
+  string booking_id = 1;
+  string start_time = 2;
+  string end_time = 3;
+  string user_id = 4;
+  string note = 5;
+}
+
+message OccupiedIntervalsResponse {
+  repeated OccupiedSlotProto intervals = 1;
+}
+
+service RoomService {
+  rpc ComputeIntervals(ComputeIntervalsRequest) returns (ComputeIntervalsResponse);
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+  rpc OccupiedIntervals(OccupiedIntervalsRequest) returns (OccupiedIntervalsResponse);
+}
