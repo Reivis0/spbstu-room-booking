@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Insert Buildings
 INSERT INTO buildings (id, code, name, address) VALUES ('db6d11ff-dbd1-4f07-85c6-764504eb73e5', '1', 'Главное здание', 'Санкт-Петербург, ул. Политехническая, д. 29');
 
@@ -13,7 +15,14 @@ INSERT INTO users (id, email, password_hash, firstname, lastname, role, is_activ
     '79d934c0-67cf-4e85-9229-a88d52e9afe7', 'sidorov.a.s@edu.spbstu.ru', '7e4c131d6b3db681bfac64050bab9c9e66b131b853219a088da02ab4f334688c', 'Алексей', 'Сидоров', 'student', True, '2025-10-20 09:00:00+00', '2025-10-20 09:00:00+00');
 
 INSERT INTO users (id, email, password_hash, firstname, lastname, role, is_active, created_at, updated_at) VALUES (
-    '23106058-2372-4dcd-b761-fb2eee028717', 'kozlov.m.k@edu.spbstu.ru', '80d9ea49a3ca513020559e61072bfa6c7fcb6f3be01dadffcb3ad2137770f144', 'Михаил', 'Козлов', 'admin', True, '2025-10-20 09:00:00+00', '2025-10-20 09:00:00+00');
+    '23106058-2372-4dcd-b761-fb2eee028717', 'kozlov.m.k@edu.spbstu.ru',
+    crypt('admin', gen_salt('bf', 10)),
+    , 'Михаил', 'Козлов', 'admin', True, '2025-10-20 09:00:00+00', '2025-10-20 09:00:00+00'
+)
+ON CONFLICT (email)
+DO UPDATE SET
+    password_hash = crypt('admin123', gen_salt('bf', 10)),
+    role = 'admin';
 
 INSERT INTO users (id, email, password_hash, firstname, lastname, role, is_active, created_at, updated_at) VALUES (
     '191f4d1e-bbbe-4ca5-b1e2-b285ebe07f38', 'smirnov.s.s@edu.spbstu.ru', '98abd83382b662eb2c80589d0ef79a547bbe16e08c6f0d4ed6d25c1f8393ba37', 'Сергей', 'Смирнов', 'student', True, '2025-10-20 09:00:00+00', '2025-10-20 09:00:00+00');

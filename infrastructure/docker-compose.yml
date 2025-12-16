@@ -107,6 +107,61 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 180s
 
+  booking_api:
+    build:
+      context: ../booking_API
+      dockerfile: Dockerfile
+    container_name: booking-api
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NATS_URL: nats://nats:4222
+      AVAILABILITY_ENGINE_HOST: availability_engine
+      AVAILABILITY_ENGINE_PORT: 50051
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - booking-net
+    restart: unless-stopped
+
+  availability_engine:
+    build:
+      context: ../availability_engine
+      dockerfile: Dockerfile
+    container_name: availability-engine
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NATS_HOST: nats
+      NATS_PORT: 4222
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - booking-net
+    restart: unless-stopped
+
 # TODO: В будущем добавить дописанный и настроекнный nginx
 
 volumes:
