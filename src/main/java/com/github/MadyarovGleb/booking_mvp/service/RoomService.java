@@ -1,5 +1,6 @@
 package com.github.MadyarovGleb.booking_mvp.service;
 
+import room_service.*;
 import com.github.MadyarovGleb.booking_mvp.entity.Room;
 import com.github.MadyarovGleb.booking_mvp.repository.RoomRepository;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
@@ -44,21 +45,36 @@ public class RoomService {
 
         List<Room> rooms = roomRepository.findAll(); // TODO: добавить фильтры по buildingId, capacity, features, search
 
-        // фильтрация по availability
         if (availableFrom != null && availableTo != null) {
-            rooms.removeIf(room -> availability.computeIntervals(room.getId().toString(), availableFrom).isEmpty());
+            rooms.removeIf(room ->
+                    availability.computeIntervals(
+                            room.getId().toString(),
+                            availableFrom.substring(0, 10), // дата YYYY-MM-DD
+                            availableFrom.substring(11, 16), // startTime HH:mm
+                            availableTo.substring(11, 16) // endTime HH:mm
+                    ).isEmpty()
+            );
         }
 
         redis.set(cacheKey, rooms, Duration.ofMinutes(10));
         return rooms;
     }
 
-    public List<room_service.RoomServiceOuterClass.TimeSlot> getAvailability(UUID roomId, String date, int minDurationMinutes) {
+    public List<TimeSlot> getAvailability(UUID roomId, String date, int minDurationMinutes) {
         String cacheKey = String.format("availability:%s:%s", roomId, date);
-        List<room_service.RoomServiceOuterClass.TimeSlot> cached = redis.get(cacheKey, List.class);
+        List<TimeSlot> cached = redis.get(cacheKey, List.class);
         if (cached != null) return cached;
 
-        List<room_service.RoomServiceOuterClass.TimeSlot> slots = availability.computeIntervals(roomId.toString(), date);
+        String startTime = "09:00";
+        String endTime = "21:00";
+
+        List<TimeSlot> slots = availability.computeIntervals(
+                roomId.toString(),
+                date,
+                startTime,
+                endTime
+        );
+
         redis.set(cacheKey, slots, Duration.ofMinutes(5));
         return slots;
     }

@@ -57,25 +57,21 @@ public class AuthService {
         var u = uOpt.get();
         if (!encoder.matches(password, u.getPasswordHash())) return null;
 
-        // Сохраняем сессию в Redis
         String sessionKey = "session:" + u.getId();
         redis.set(sessionKey, u, Duration.ofHours(24));
 
         return u;
     }
 
-    // Проверка сессии по userId
     public User getUserFromSession(UUID userId) {
         User user = redis.get("session:" + userId, User.class);
         if (user != null) return user;
 
-        // fallback — из базы
         Optional<User> uOpt = userRepository.findById(userId);
         uOpt.ifPresent(u -> redis.set("session:" + u.getId(), u, Duration.ofHours(24)));
         return uOpt.orElse(null);
     }
 
-    // Удаление сессии (logout)
     public void invalidateSession(UUID userId) {
         redis.delete("session:" + userId);
     }

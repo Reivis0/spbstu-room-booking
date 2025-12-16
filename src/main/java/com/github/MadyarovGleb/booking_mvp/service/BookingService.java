@@ -4,6 +4,8 @@ import com.github.MadyarovGleb.booking_mvp.dto.CreateBookingRequest;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking;
 import com.github.MadyarovGleb.booking_mvp.repository.BookingRepository;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
+import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.BookingConflict;
+import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.ValidationResult;
 import com.github.MadyarovGleb.booking_mvp.service.nats.NatsPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,10 +38,16 @@ public class BookingService {
     public Booking createBooking(UUID userId, CreateBookingRequest req) {
         validateTimes(req);
 
-        var conflicts = availability.validate(req.getRoomId(), req.getStartsAt(), req.getEndsAt(), null);
-        //if (!conflicts.isEmpty()) throw new BookingConflictException(conflicts);
+        ValidationResult result = availability.validate(
+                req.getRoomId(), req.getStartsAt(), req.getEndsAt(), null
+        );
 
-        Booking b = Booking.builder()
+        // Если есть конфликты — бросаем исключение с правильным типом
+        if (!result.getConflicts().isEmpty()) {
+            throw new BookingConflictException(result.getConflicts()); // List<AvailabilityEngineClient.BookingConflict>
+        }
+
+        Booking booking = Booking.builder()
                 .userId(userId)
                 .roomId(req.getRoomId())
                 .startsAt(req.getStartsAt())
@@ -47,36 +55,41 @@ public class BookingService {
                 .status(Booking.BookingStatus.pending)
                 .build();
 
-        Booking saved = bookingRepository.save(b);
+        Booking saved = bookingRepository.save(booking);
 
-        natsPublisher.publish("booking.created", "{\"booking_id\":\"" + saved.getId() +
-                "\",\"user_id\":\"" + saved.getUserId() + "\",\"room_id\":\"" + saved.getRoomId() + "\"}");
+        natsPublisher.publish("booking.created",
+                String.format("{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
+                        saved.getId(), saved.getUserId(), saved.getRoomId()));
 
-        // инвалидация кэша
         invalidateCache(saved);
-
         return saved;
     }
 
     @Transactional
     public Booking updateBooking(UUID actorId, String actorRole, UUID bookingId, CreateBookingRequest req) {
-        Booking b = bookingRepository.findById(bookingId).orElseThrow();
-        checkActorPermission(b, actorId, actorRole);
-        if (b.getStartsAt().isBefore(OffsetDateTime.now()))
+        Booking booking = bookingRepository.findById(bookingId).orElseThrow();
+        checkActorPermission(booking, actorId, actorRole);
+        if (booking.getStartsAt().isBefore(OffsetDateTime.now()))
             throw new IllegalArgumentException("cannot update a booking that already started");
 
-        var conflicts = availability.validate(req.getRoomId(), req.getStartsAt(), req.getEndsAt(), bookingId);
-        //if (!conflicts.isEmpty()) throw new BookingConflictException(conflicts);
+        ValidationResult result = availability.validate(
+                req.getRoomId(), req.getStartsAt(), req.getEndsAt(), bookingId
+        );
 
-        invalidateCache(b);
+        if (!result.getConflicts().isEmpty()) {
+            throw new BookingConflictException(result.getConflicts());
+        }
 
-        b.setRoomId(req.getRoomId());
-        b.setStartsAt(req.getStartsAt());
-        b.setEndsAt(req.getEndsAt());
-        Booking updated = bookingRepository.save(b);
+        invalidateCache(booking);
 
-        natsPublisher.publish("booking.updated", "{\"booking_id\":\"" + updated.getId() +
-                "\",\"user_id\":\"" + updated.getUserId() + "\",\"room_id\":\"" + updated.getRoomId() + "\"}");
+        booking.setRoomId(req.getRoomId());
+        booking.setStartsAt(req.getStartsAt());
+        booking.setEndsAt(req.getEndsAt());
+        Booking updated = bookingRepository.save(booking);
+
+        natsPublisher.publish("booking.updated",
+                String.format("{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
+                        updated.getId(), updated.getUserId(), updated.getRoomId()));
 
         invalidateCache(updated);
         return updated;
@@ -84,14 +97,15 @@ public class BookingService {
 
     @Transactional
     public Booking cancel(UUID id, UUID actorId, String actorRole) {
-        Booking b = bookingRepository.findById(id).orElseThrow();
-        checkActorPermission(b, actorId, actorRole);
+        Booking booking = bookingRepository.findById(id).orElseThrow();
+        checkActorPermission(booking, actorId, actorRole);
 
-        b.setStatus(Booking.BookingStatus.cancelled);
-        Booking cancelled = bookingRepository.save(b);
+        booking.setStatus(Booking.BookingStatus.cancelled);
+        Booking cancelled = bookingRepository.save(booking);
 
-        natsPublisher.publish("booking.cancelled", "{\"booking_id\":\"" + cancelled.getId() +
-                "\",\"user_id\":\"" + cancelled.getUserId() + "\",\"room_id\":\"" + cancelled.getRoomId() + "\"}");
+        natsPublisher.publish("booking.cancelled",
+                String.format("{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
+                        cancelled.getId(), cancelled.getUserId(), cancelled.getRoomId()));
 
         invalidateCache(cancelled);
         return cancelled;
@@ -104,27 +118,22 @@ public class BookingService {
             throw new IllegalArgumentException("ends_at must be after starts_at");
     }
 
-    private void checkActorPermission(Booking b, UUID actorId, String actorRole) {
-        if (!b.getUserId().equals(actorId) && !"admin".equals(actorRole))
+    private void checkActorPermission(Booking booking, UUID actorId, String actorRole) {
+        if (!booking.getUserId().equals(actorId) && !"admin".equals(actorRole))
             throw new SecurityException("forbidden");
     }
 
-    private void invalidateCache(Booking b) {
-        redis.delete(String.format("availability:%s:%s", b.getRoomId(), b.getStartsAt().toLocalDate()));
+    private void invalidateCache(Booking booking) {
+        redis.delete(String.format("availability:%s:%s", booking.getRoomId(), booking.getStartsAt().toLocalDate()));
         redis.deletePattern("rooms:search:*");
     }
 
-    // ───────────────────────────────────────────────
-// Получение брони по ID
     public Booking getById(UUID id) {
         return bookingRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + id));
     }
 
-    // ───────────────────────────────────────────────
-// Получение всех броней пользователя
     public List<Booking> listByUser(UUID userId) {
         return bookingRepository.findByUserId(userId);
     }
-
 }

@@ -39,7 +39,6 @@ public class BuildingService {
         return building;
     }
 
-    // Метод для инвалидации кэша при изменении данных корпуса
     public void invalidateCache(UUID buildingId) {
         redis.delete("building:" + buildingId);
         redis.delete("buildings:all");

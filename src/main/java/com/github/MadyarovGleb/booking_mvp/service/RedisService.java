@@ -15,7 +15,6 @@ public class RedisService {
         this.redisTemplate = redisTemplate;
     }
 
-    // Получение объекта
     @SuppressWarnings("unchecked")
     public <T> T get(String key, Class<T> clazz) {
         Object value = redisTemplate.opsForValue().get(key);
@@ -23,12 +22,10 @@ public class RedisService {
         return (T) value;
     }
 
-    // Сохранение объекта с TTL
     public void set(String key, Object value, Duration ttl) {
         redisTemplate.opsForValue().set(key, value, ttl);
     }
 
-    // Удаление ключа
     public void delete(String key) {
         redisTemplate.delete(key);
     }
