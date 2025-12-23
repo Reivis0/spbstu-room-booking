@@ -15,7 +15,7 @@ public class AvailabilityEngineConfig {
     private int port;
 
     @Bean
-    public AvailabilityEngineClient availabilityEngineClient() {
+    public AvailabilityEngineClient availabilityEngineClient() throws InterruptedException {
         return new AvailabilityEngineClient(host, port);
     }
 }

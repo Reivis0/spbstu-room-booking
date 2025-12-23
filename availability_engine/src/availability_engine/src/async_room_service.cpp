@@ -107,7 +107,7 @@ void AsyncRoomService::ComputeIntervalsCallData::ProcessWithDataBase()
       {
         int H = m / 60;
         int M = m % 60;
-        char buf[6];
+        char buf[16];
         snprintf(buf, sizeof(buf), "%02d:%02d", H, M);
         return std::string(buf);
       }

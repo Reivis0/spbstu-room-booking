@@ -42,9 +42,14 @@ public class BookingService {
                 req.getRoomId(), req.getStartsAt(), req.getEndsAt(), null
         );
 
-        // Если есть конфликты — бросаем исключение с правильным типом
-        if (!result.getConflicts().isEmpty()) {
-            throw new BookingConflictException(result.getConflicts()); // List<AvailabilityEngineClient.BookingConflict>
+        // Фильтруем пустые конфликты, которые могут приходить из gRPC
+        List<BookingConflict> realConflicts = result.getConflicts().stream()
+                .filter(c -> c.getBookingId() != null && !c.getBookingId().isEmpty())
+                .toList();
+
+        // Если есть реальные конфликты — бросаем исключение
+        if (!realConflicts.isEmpty()) {
+            throw new BookingConflictException(realConflicts);
         }
 
         Booking booking = Booking.builder()
@@ -76,8 +81,13 @@ public class BookingService {
                 req.getRoomId(), req.getStartsAt(), req.getEndsAt(), bookingId
         );
 
-        if (!result.getConflicts().isEmpty()) {
-            throw new BookingConflictException(result.getConflicts());
+        // Фильтруем пустые конфликты
+        List<BookingConflict> realConflicts = result.getConflicts().stream()
+                .filter(c -> c.getBookingId() != null && !c.getBookingId().isEmpty())
+                .toList();
+
+        if (!realConflicts.isEmpty()) {
+            throw new BookingConflictException(realConflicts);
         }
 
         invalidateCache(booking);

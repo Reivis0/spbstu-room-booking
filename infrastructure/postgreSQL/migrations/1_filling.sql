@@ -16,7 +16,7 @@ INSERT INTO users (id, email, password_hash, firstname, lastname, role, is_activ
 
 INSERT INTO users (id, email, password_hash, firstname, lastname, role, is_active, created_at, updated_at) VALUES (
     '23106058-2372-4dcd-b761-fb2eee028717', 'kozlov.m.k@edu.spbstu.ru',
-    crypt('admin', gen_salt('bf', 10)),
+    crypt('admin', gen_salt('bf', 10))
     , 'Михаил', 'Козлов', 'admin', True, '2025-10-20 09:00:00+00', '2025-10-20 09:00:00+00'
 )
 ON CONFLICT (email)

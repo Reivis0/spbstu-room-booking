@@ -10,7 +10,7 @@ pkg_check_modules(REDIS REQUIRED hiredis)
 pkg_check_modules(POSTGRESQL REQUIRED libpq)
 
 
-file(COPY ${CMAKE_SOURCE_DIR}/include/configs/ 
+file(COPY ${CMAKE_SOURCE_DIR}/include/configs/
      DESTINATION ${CMAKE_BINARY_DIR}/bin/configs)
 
 add_executable(availability_engine
@@ -18,7 +18,7 @@ add_executable(availability_engine
     src/async_room_service.cpp
 )
 
-target_compile_definitions(availability_engine PRIVATE 
+target_compile_definitions(availability_engine PRIVATE
     CONFIG_PATH="${CMAKE_SOURCE_DIR}/include/configs")
 
 target_include_directories(availability_engine PRIVATE
@@ -29,7 +29,7 @@ target_include_directories(availability_engine PRIVATE
     ${CMAKE_SOURCE_DIR}/src/common
     ${REDIS_INCLUDE_DIRS}
     ${POSTGRESQL_INCLUDE_DIRS}
-    ${LIBEVENT_INCLUDE_DIRS} 
+    ${LIBEVENT_INCLUDE_DIRS}
 )
 
 target_link_libraries(availability_engine PRIVATE
@@ -37,10 +37,10 @@ target_link_libraries(availability_engine PRIVATE
     common_lib
     ${REDIS_LIBRARIES}
     ${POSTGRESQL_LIBRARIES}
-    nats_static             
+    nats_static
     ${LIBEVENT_LIBRARIES}
     Threads::Threads
-    dl                  
+    dl
 )
 
 target_compile_options(availability_engine PRIVATE

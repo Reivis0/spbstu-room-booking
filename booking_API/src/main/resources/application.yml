@@ -1,9 +1,9 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/booking_mvp_db
+    url: jdbc:postgresql://postgres:5432/spbstu_room_booking
     driver-class-name: org.postgresql.Driver
-    username: postgres
-    password: 09062005
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: update
@@ -12,9 +12,9 @@ spring:
         jdbc:
           time_zone: UTC
   redis:
-    host: localhost
-    port: 6379
-    password: password
+    host: ${SPRING_REDIS_HOST}
+    port: ${SPRING_REDIS_PORT}
+    password: ${SPRING_REDIS_PASSWORD}
     timeout: 5000
 
 server:
@@ -22,15 +22,13 @@ server:
 
 app:
   jwt:
-    secret: replace-with-very-secret-change-in-prod
+    secret: ${JWT_SECRET:supersecret}
     issuer: architecht-booking-api
     access-ttl-seconds: 3600
 
 nats:
-  url: nats://localhost:4222
+  url: ${NATS_URL}
 
 availability-engine:
-  host: localhost
-  port: 50051
-
-
+  host: ${AVAILABILITY_ENGINE_HOST}
+  port: ${AVAILABILITY_ENGINE_PORT}

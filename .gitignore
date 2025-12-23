@@ -5,6 +5,7 @@ include/configs/*.ini
 logs/
 .env
 *.bin
+*.ini
 
 *HELP.md
 *target/

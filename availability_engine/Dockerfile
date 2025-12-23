@@ -2,43 +2,54 @@ FROM ubuntu:22.04 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     git \
+    pkg-config \
+    libssl-dev \
     libpq-dev \
     libevent-dev \
     libhiredis-dev \
     libprotobuf-dev \
     protobuf-compiler \
     libgrpc++-dev \
-    protobuf-compiler-grpc \
-    pkg-config \
     libgrpc-dev \
+    protobuf-compiler-grpc \
+    libc-ares-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY . .
 
+# Build with verbose output to see errors
 RUN mkdir build && cd build && \
     cmake .. && \
-    make -j$(nproc)
+    make -j$(nproc) VERBOSE=1
 
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install runtime dependencies
+# apt-get will automatically pull dependencies like libgrpc10, libc-ares2, etc.
 RUN apt-get update && apt-get install -y \
     libpq5 \
     libevent-2.1-7 \
     libhiredis0.14 \
     libprotobuf23 \
     libgrpc++1 \
+    libssl3 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=build /app/build/bin/availability_engine .
-COPY --from=build /app/build/lib /usr/local/lib/
+# Copy any built libraries if they ended up in lib (usually nats static lib is linked into binary, but just in case)
+# COPY --from=build /app/build/lib /usr/local/lib/ 
+# RUN ldconfig
 
 # Create configs directory
 RUN mkdir configs

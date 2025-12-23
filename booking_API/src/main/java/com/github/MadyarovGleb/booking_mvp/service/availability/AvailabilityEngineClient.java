@@ -15,14 +15,30 @@ import java.util.UUID;
 
 public class AvailabilityEngineClient {
 
-    private final RoomServiceGrpc.RoomServiceBlockingStub stub;
+    private RoomServiceGrpc.RoomServiceBlockingStub stub;
 
-    public AvailabilityEngineClient(String host, int port) {
-        ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port)
-                .usePlaintext()
-                .build();
-        stub = RoomServiceGrpc.newBlockingStub(channel);
-    }
+    public AvailabilityEngineClient(String host, int port) throws InterruptedException {
+            int retries = 5;
+            while (true) {
+                try {
+                    ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port)
+                            .usePlaintext()
+                            .build();
+                    stub = RoomServiceGrpc.newBlockingStub(channel);
+                    System.out.println("Connected to Availability Engine at " + host + ":" + port);
+                    break;
+                } catch (Exception e) {
+                    if (--retries == 0) throw e;
+                    System.out.println("Retrying connection to Availability Engine...");
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw ie;
+                    }
+                }
+            }
+        }
 
     public List<TimeSlot> computeIntervals(String roomId, String date, String startTime, String endTime) {
         ComputeIntervalsRequest.Builder builder = ComputeIntervalsRequest.newBuilder()
