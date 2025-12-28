@@ -42,12 +42,10 @@ public class BookingService {
                 req.getRoomId(), req.getStartsAt(), req.getEndsAt(), null
         );
 
-        // Фильтруем пустые конфликты, которые могут приходить из gRPC
         List<BookingConflict> realConflicts = result.getConflicts().stream()
                 .filter(c -> c.getBookingId() != null && !c.getBookingId().isEmpty())
                 .toList();
 
-        // Если есть реальные конфликты — бросаем исключение
         if (!realConflicts.isEmpty()) {
             throw new BookingConflictException(realConflicts);
         }
@@ -58,6 +56,8 @@ public class BookingService {
                 .startsAt(req.getStartsAt())
                 .endsAt(req.getEndsAt())
                 .status(Booking.BookingStatus.pending)
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
                 .build();
 
         Booking saved = bookingRepository.save(booking);
@@ -81,7 +81,6 @@ public class BookingService {
                 req.getRoomId(), req.getStartsAt(), req.getEndsAt(), bookingId
         );
 
-        // Фильтруем пустые конфликты
         List<BookingConflict> realConflicts = result.getConflicts().stream()
                 .filter(c -> c.getBookingId() != null && !c.getBookingId().isEmpty())
                 .toList();
@@ -95,6 +94,7 @@ public class BookingService {
         booking.setRoomId(req.getRoomId());
         booking.setStartsAt(req.getStartsAt());
         booking.setEndsAt(req.getEndsAt());
+        booking.setUpdatedAt(OffsetDateTime.now());
         Booking updated = bookingRepository.save(booking);
 
         natsPublisher.publish("booking.updated",
