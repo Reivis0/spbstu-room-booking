@@ -5,10 +5,10 @@
 #include <message.pb.h>
 #include <grpcpp/grpcpp.h>
 
-#include <cache/redis_async_client.hpp>
-#include <database/postgreSQL_async_client.hpp>
-#include <messaging/nats_async_client.hpp>
-#include <logger.hpp>
+#include "cache/redis_async_client.hpp"
+#include "database/postgreSQL_async_client.hpp"
+#include "messaging/nats_async_client.hpp"
+#include "logger.hpp"
 #include <google/protobuf/util/json_util.h>
 
 #include <string>
@@ -28,7 +28,6 @@ public:
   void start();
   void shutdown();
 
-//CallData
 private:
   class CallData
   {
@@ -49,7 +48,7 @@ private:
     void ProcessWithDataBase();
     void CompleteRequest();
 
-    private:
+    protected:
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
@@ -72,7 +71,7 @@ private:
     void CompleteRequest();
     void ProcessWithDataBase();
 
-    private:
+    protected:
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
@@ -114,7 +113,7 @@ private:
     void ProcessWithDataBase();
     void ProcessWithCache();
 
-    private:
+    protected:
       room_service::RoomService::AsyncService* m_service;
       grpc::ServerCompletionQueue* m_cq;
       grpc::ServerContext m_ctx;
@@ -128,12 +127,9 @@ private:
       bool m_done {false};
   };
 
-//методы
-private:
 
 
-//поля 
-private:
+protected:
   room_service::RoomService::AsyncService m_service;
   std::unique_ptr<grpc::ServerCompletionQueue> m_cq;
   std::unique_ptr<grpc::Server> m_server;

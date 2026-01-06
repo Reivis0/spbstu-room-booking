@@ -6,9 +6,10 @@
 #include <string>
 #include <atomic>
 #include <map>
-#include "database/postgreSQL_async_client.hpp"
-#include "messaging/nats_async_client.hpp"
+#include "postgreSQL_async_client.hpp"
+#include "nats_async_client.hpp"
 #include "lesson.hpp" 
+#include "logger.hpp"
 
 class RuzImporter {
 public:
@@ -19,7 +20,7 @@ public:
     void run();
     void shutdown();
 
-private:
+protected:
     void main_loop();
     void import_cycle();
     bool fetch_and_process();

@@ -2,7 +2,6 @@ find_package(Protobuf REQUIRED MODULE)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(gRPC REQUIRED grpc++ grpc)
 
-# Find the gRPC C++ plugin executable
 find_program(gRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
 
 if(NOT gRPC_CPP_PLUGIN_EXECUTABLE)
@@ -18,7 +17,6 @@ file(MAKE_DIRECTORY "${PROTO_GEN_DIR}")
 
 add_library(protos_lib STATIC)
 
-# Ensure C++17 is used
 target_compile_features(protos_lib PUBLIC cxx_std_17)
 
 protobuf_generate(
@@ -41,6 +39,5 @@ protobuf_generate(
   PROTOS ${PROTO_FILES}
 )
 
-# Link against the libraries found by PkgConfig and Protobuf module
 target_link_libraries(protos_lib PUBLIC ${Protobuf_LIBRARIES} ${gRPC_LIBRARIES})
 target_include_directories(protos_lib PUBLIC "${PROTO_GEN_DIR}" ${Protobuf_INCLUDE_DIRS} ${gRPC_INCLUDE_DIRS})
