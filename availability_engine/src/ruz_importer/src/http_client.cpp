@@ -41,7 +41,7 @@ HttpClient::HttpClient() : p_impl(std::make_unique<Impl>())
 {
   if (!p_impl->curl)
   {
-    LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT: Failed to initialize CURL");
+    LOG_ERROR("RUZ_IMPORTER: HTTP_CLIENT: Failed to initialize CURL");
   }
 }
 
@@ -51,7 +51,7 @@ std::string HttpClient::fetch_ruz_data(const std::string& api_url)
 {
   if (!p_impl->curl)
   {
-    LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT: CURL not initialized");
+    LOG_ERROR("RUZ_IMPORTER: HTTP_CLIENT: CURL not initialized");
     return "";
   }
   
@@ -63,7 +63,7 @@ std::string HttpClient::fetch_ruz_data(const std::string& api_url)
   
   if (res != CURLE_OK)
   {
-    LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT: CURL request failed: " + std::string(curl_easy_strerror(res)));
+    LOG_ERROR("RUZ_IMPORTER: HTTP_CLIENT: CURL request failed: " + std::string(curl_easy_strerror(res)));
     return "";
   }
   
@@ -72,10 +72,10 @@ std::string HttpClient::fetch_ruz_data(const std::string& api_url)
   
   if (http_code != 200)
   {
-    LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT: HTTP error: " + std::to_string(http_code));
+    LOG_ERROR("RUZ_IMPORTER: HTTP_CLIENT: HTTP error: " + std::to_string(http_code));
     return "";
   }
   
-  LOG_INFO("RUZ_IMPORTER:HTTP_CLIENT: Successfully fetched " + std::to_string(p_impl->response_data.size()) + " bytes from RUZ API");
+  LOG_INFO("RUZ_IMPORTER: HTTP_CLIENT: Successfully fetched " + std::to_string(p_impl->response_data.size()) + " bytes from RUZ API");
   return p_impl->response_data;
 }
