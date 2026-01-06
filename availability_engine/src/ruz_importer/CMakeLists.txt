@@ -24,11 +24,16 @@ target_include_directories(ruz_importer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/log
-    ${CMAKE_SOURCE_DIR}/src/common
+    
+    ${CMAKE_SOURCE_DIR}/src/common/database 
+    ${CMAKE_SOURCE_DIR}/src/common/messaging
+    ${CMAKE_SOURCE_DIR}/src/common/cache
+    
     ${CURL_INCLUDE_DIRS}
     ${JSONCPP_INCLUDE_DIRS}
     ${POSTGRESQL_INCLUDE_DIRS}
 )
+
 
 target_link_libraries(ruz_importer PRIVATE
     common_lib
