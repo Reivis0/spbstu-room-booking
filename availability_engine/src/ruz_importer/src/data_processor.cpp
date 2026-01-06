@@ -16,7 +16,7 @@ std::vector<Lesson> DataProcessor::parse_and_transform(const std::string& json_d
 
     if (!root.isArray()) {
         if (root.isObject() && root.isMember("error")) {
-             LOG_WARN("RUZ_IMPORTER: API returned error object");
+             LOG_WARN("RUZ_IMPORTER: DATA_PROCESSOR: API returned error object");
              return lessons;
         }
 

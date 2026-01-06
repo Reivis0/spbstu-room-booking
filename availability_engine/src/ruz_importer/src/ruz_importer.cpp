@@ -96,7 +96,7 @@ void RuzImporter::import_cycle() {
     bool success = false;
     for (int i = 0; i < m_retry_attempts && !m_shutdown; ++i) {
         if (i > 0) {
-            LOG_INFO("Retry " + std::to_string(i + 1) + "/" + std::to_string(m_retry_attempts));
+            LOG_INFO("RUZ_IMPORTER: Retry " + std::to_string(i + 1) + "/" + std::to_string(m_retry_attempts));
             std::this_thread::sleep_for(std::chrono::seconds(m_retry_delay_seconds));
         }
         
@@ -123,13 +123,13 @@ bool RuzImporter::load_rooms_cache() {
     m_pg_client->execute("SELECT id, code FROM rooms", {}, cb.get());
     
     if (fut.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
-         LOG_ERROR("DB Timeout loading rooms");
+         LOG_ERROR("RUZ_IMPORTER: DB Timeout loading rooms");
          return false;
     }
 
     auto res = fut.get();
     if (!res.first) {
-        LOG_ERROR("DB Error loading rooms: " + res.second);
+        LOG_ERROR("RUZ_IMPORTER: DB Error loading rooms: " + res.second);
         return false;
     }
 
@@ -139,7 +139,7 @@ bool RuzImporter::load_rooms_cache() {
             m_room_name_to_id[row[1]] = row[0];
         }
     }
-    LOG_INFO("Loaded " + std::to_string(m_room_name_to_id.size()) + " rooms into cache.");
+    LOG_INFO("RUZ_IMPORTER: Loaded " + std::to_string(m_room_name_to_id.size()) + " rooms into cache.");
     return true;
 }
 
@@ -163,7 +163,7 @@ bool RuzImporter::fetch_and_process() {
         std::string json = http.fetch_ruz_data(url);
         
         if (json.empty()) {
-         LOG_WARN("Empty/Failed response for room code: " + room_code);
+         LOG_WARN("RUZ_IMPORTER: Empty/Failed response for room code: " + room_code);
             continue;
         }
 
@@ -180,10 +180,10 @@ bool RuzImporter::fetch_and_process() {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    LOG_INFO("Fetched data for " + std::to_string(rooms_processed) + " rooms. Total lessons: " + std::to_string(all_valid_lessons.size()));
+    LOG_INFO("RUZ_IMPORTER: Fetched data for " + std::to_string(rooms_processed) + " rooms. Total lessons: " + std::to_string(all_valid_lessons.size()));
 
     if (all_valid_lessons.empty()) {
-        LOG_WARN("No lessons found for any room.");
+        LOG_WARN("RUZ_IMPORTER: No lessons found for any room.");
         return true;
     }
 
@@ -195,7 +195,7 @@ bool RuzImporter::fetch_and_process() {
         return true;
 
     } catch (const std::exception& e) {
-        LOG_ERROR(std::string("Exception in DB save/sync: ") + e.what());
+        LOG_ERROR(std::string("RUZ_IMPORTER: Exception in DB save/sync: ") + e.what());
         return false;
     }
 }
@@ -235,17 +235,17 @@ bool RuzImporter::save_lessons_to_db(const std::vector<Lesson>& lessons) {
         m_pg_client->execute(sql.str(), params, cb.get());
         
         if (fut.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-             LOG_ERROR("DB Timeout inserting batch");
+             LOG_ERROR("RUZ_IMPORTER: DB Timeout inserting batch");
              return false;
         }
 
         auto res = fut.get();
         if (!res.first) {
-            LOG_ERROR("DB Insert Error: " + res.second);
+            LOG_ERROR("RUZ_IMPORTER: DB Insert Error: " + res.second);
             return false;
         }
     }
-    LOG_INFO("Saved/Updated " + std::to_string(lessons.size()) + " lessons.");
+    LOG_INFO("RUZ_IMPORTER: Saved/Updated " + std::to_string(lessons.size()) + " lessons.");
     return true;
 }
 
@@ -283,21 +283,21 @@ bool RuzImporter::sync_deletions(const std::vector<Lesson>& lessons) {
     m_pg_client->execute(sql, params, cb.get());
 
     if (fut.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-         LOG_ERROR("DB Timeout syncing deletions");
+         LOG_ERROR("RUZ_IMPORTER: DB Timeout syncing deletions");
          return false;
     }
 
     auto res = fut.get();
     if (!res.first) {
-        LOG_ERROR("DB Deletion Sync Error: " + res.second);
+        LOG_ERROR("RUZ_IMPORTER: DB Deletion Sync Error: " + res.second);
         return false;
     }
 
-    LOG_INFO("Sync (Cleanup) completed for range " + min_time + " - " + max_time);
+    LOG_INFO("RUZ_IMPORTER: Sync (Cleanup) completed for range " + min_time + " - " + max_time);
     return true;
 }
 
 void RuzImporter::send_notification() {
     m_nats_client->publish("events.schedule_refreshed", "{\"event\": \"full_refresh\"}");
-    LOG_INFO("Sent NATS notification");
+    LOG_INFO("RUZ_IMPORTER: Sent NATS notification");
 }

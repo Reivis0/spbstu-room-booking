@@ -41,7 +41,7 @@ std::map<std::string, std::string> PostgreSQLAsyncClient::Connector::read_config
   std::ifstream f("configs/pg_config.ini");
   if (!f.is_open())
   {
-    LOG_ERROR("Failed to open config file");
+    LOG_ERROR("PG: Failed to open config file");
     return cfg;
   }
   std::string line, section;
@@ -120,7 +120,7 @@ void PostgreSQLAsyncClient::begin_async_connect()
   if (!m_connect.connection) {
     m_connect.status = ConnectStatus::ERROR;
     m_connect.error_msg = "Failed to create connection object";
-    LOG_ERROR(m_connect.error_msg);
+    LOG_ERROR("PG: " + m_connect.error_msg);
     return;
   }
   if (PQsetnonblocking(m_connect.connection, 1) != 0)
@@ -160,7 +160,7 @@ void PostgreSQLAsyncClient::arm_connect_poll()
       m_connect.status = ConnectStatus::CONNECTED;
       m_connect.is_connected = true;
       update_interests(false,false);
-      LOG_INFO("Connected PG");
+      LOG_INFO("PG: Connected PG");
       try_send_next();
       break;
     case PGRES_POLLING_FAILED:
@@ -168,7 +168,7 @@ void PostgreSQLAsyncClient::arm_connect_poll()
       m_connect.status = ConnectStatus::ERROR;
       m_connect.error_msg = std::string("Connection failed: ") + PQerrorMessage(m_connect.connection);
       update_interests(false,false);
-      LOG_ERROR(m_connect.error_msg);
+      LOG_ERROR("PG: " + m_connect.error_msg);
       break;
   }
 }
@@ -191,7 +191,7 @@ void PostgreSQLAsyncClient::disconnect()
   m_connect.is_connected = false;
   m_connect.status = ConnectStatus::ERROR;
   update_interests(false,false);
-  LOG_INFO("disconnect PG");
+  LOG_INFO("PG: disconnect PG");
 }
 
 void PostgreSQLAsyncClient::run_loop()
@@ -213,7 +213,7 @@ void PostgreSQLAsyncClient::run_loop()
     if (pr < 0)
     {
       if (errno == EINTR) continue;
-      LOG_ERROR("poll error: " + std::string(strerror(errno)));
+      LOG_ERROR("PG: poll error: " + std::string(strerror(errno)));
       continue;
     }
     if (pr == 0)
@@ -224,7 +224,7 @@ void PostgreSQLAsyncClient::run_loop()
 
     if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
     {
-      LOG_ERROR("socket error/hup");
+      LOG_ERROR("PG: socket error/hup");
       disconnect();
       continue;
     }
@@ -252,7 +252,7 @@ void PostgreSQLAsyncClient::on_readable()
 {
   if (PQconsumeInput(m_connect.connection) != 1)
   {
-    LOG_ERROR(std::string("PQconsumeInput: ") + PQerrorMessage(m_connect.connection));
+    LOG_ERROR("PG: " + std::string("PQconsumeInput: ") + PQerrorMessage(m_connect.connection));
     disconnect();
     return;
   }
