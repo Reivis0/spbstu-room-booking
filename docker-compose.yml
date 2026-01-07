@@ -198,7 +198,7 @@ services:
     environment:
       - REACT_APP_API_URL=/api/v1
     networks:
-      - booking-network
+      - booking-net
     restart: unless-stopped
 
 # TODO: В будущем добавить дописанный и настроенный nginx
