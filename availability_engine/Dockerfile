@@ -2,7 +2,6 @@ FROM ubuntu:22.04 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -19,12 +18,12 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler-grpc \
     libc-ares-dev \
     zlib1g-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY . .
 
-# Build with verbose output to see errors
 RUN mkdir build && cd build && \
     cmake .. && \
     make -j$(nproc) VERBOSE=1
@@ -33,8 +32,6 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install runtime dependencies
-# apt-get will automatically pull dependencies like libgrpc10, libc-ares2, etc.
 RUN apt-get update && apt-get install -y \
     libpq5 \
     libevent-2.1-7 \
@@ -43,41 +40,46 @@ RUN apt-get update && apt-get install -y \
     libgrpc++1 \
     libssl3 \
     ca-certificates \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=build /app/build/bin/availability_engine .
-# Copy any built libraries if they ended up in lib (usually nats static lib is linked into binary, but just in case)
-# COPY --from=build /app/build/lib /usr/local/lib/ 
-# RUN ldconfig
 
-# Create configs directory
 RUN mkdir configs
 
-# Create entrypoint script
 RUN echo '#!/bin/bash\n\
+set -e\n\
 \n\
-# Generate pg_config.ini\n\
-echo "[booking_service]" > configs/pg_config.ini\n\
-echo "host=${POSTGRES_HOST:-localhost}" >> configs/pg_config.ini\n\
-echo "port=${POSTGRES_PORT:-5432}" >> configs/pg_config.ini\n\
-echo "database_name=${POSTGRES_DB:-booking_mvp_db}" >> configs/pg_config.ini\n\
-echo "username=${POSTGRES_USER:-postgres}" >> configs/pg_config.ini\n\
-echo "password=${POSTGRES_PASSWORD:-password}" >> configs/pg_config.ini\n\
+cat > configs/pg_config.ini << EOF\n\
+[booking_service]\n\
+host=${POSTGRES_HOST:-localhost}\n\
+port=${POSTGRES_PORT:-5432}\n\
+database_name=${POSTGRES_DB:-booking_mvp_db}\n\
+username=${POSTGRES_USER:-postgres}\n\
+password=${POSTGRES_PASSWORD:-password}\n\
+EOF\n\
 \n\
-# Generate redis_config.ini\n\
-echo "[booking_service]" > configs/redis_config.ini\n\
-echo "host=${REDIS_HOST:-localhost}" >> configs/redis_config.ini\n\
-echo "port=${REDIS_PORT:-6379}" >> configs/redis_config.ini\n\
-echo "password=${REDIS_PASSWORD:-password}" >> configs/redis_config.ini\n\
-echo "connection_timeout=${REDIS_TIMEOUT:-5000}" >> configs/redis_config.ini\n\
+cat > configs/redis_config.ini << EOF\n\
+[booking_service]\n\
+host=${REDIS_HOST:-localhost}\n\
+port=${REDIS_PORT:-6379}\n\
+password=${REDIS_PASSWORD:-password}\n\
+connection_timeout=${REDIS_TIMEOUT:-5000}\n\
+EOF\n\
 \n\
-# Generate nats_config.ini\n\
-echo "[booking_service]" > configs/nats_config.ini\n\
-echo "host=${NATS_HOST:-localhost}" >> configs/nats_config.ini\n\
-echo "client_port=${NATS_PORT:-4222}" >> configs/nats_config.ini\n\
+cat > configs/nats_config.ini << EOF\n\
+[booking_service]\n\
+host=${NATS_HOST:-localhost}\n\
+client_port=${NATS_PORT:-4222}\n\
+EOF\n\
 \n\
 exec ./availability_engine\n\
 ' > entrypoint.sh && chmod +x entrypoint.sh
+
+EXPOSE 50051
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD nc -z localhost 50051 || exit 1
 
 CMD ["./entrypoint.sh"]

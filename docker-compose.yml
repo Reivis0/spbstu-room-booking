@@ -1,7 +1,7 @@
 services:
   postgres:
     build:
-      context: ./postgreSQL
+      context: ./infrastructure/postgreSQL
       dockerfile: Dockerfile
     container_name: booking-postgres
     environment:
@@ -36,9 +36,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
   redis:
     build:
-      context: ./redis
+      context: ./infrastructure/redis
       dockerfile: Dockerfile
     container_name: booking-redis
     environment:
@@ -72,7 +73,7 @@ services:
 
   nats:
     build:
-      context: ./nats
+      context: ./infrastructure/nats
       dockerfile: Dockerfile
     container_name: booking-nats
     ports:
@@ -97,7 +98,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-      start_period: 15s
+      start_period: 20s
     logging:
       driver: "json-file"
       options:
@@ -109,7 +110,7 @@ services:
 
   booking_api:
     build:
-      context: ../booking_API
+      context: ./booking_API
       dockerfile: Dockerfile
     container_name: booking-api
     ports:
@@ -145,10 +146,16 @@ services:
     networks:
       - booking-net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   availabilityengine:
     build:
-      context: ../availability_engine
+      context: ./availability_engine
       dockerfile: Dockerfile
     container_name: availability-engine
     ports:
@@ -174,6 +181,12 @@ services:
     networks:
       - booking-net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
 
 # TODO: В будущем добавить дописанный и настроенный nginx
 
