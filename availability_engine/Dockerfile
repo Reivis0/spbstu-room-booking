@@ -19,7 +19,19 @@ RUN apt-get update && apt-get install -y \
     libc-ares-dev \
     zlib1g-dev \
     ca-certificates \
+    libcurl4-openssl-dev \
+    libjsoncpp-dev \
+    libgtest-dev \
+    libgmock-dev \
     && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp
+RUN git clone https://github.com/nats-io/nats.c.git && \
+    cd nats.c && \
+    cmake . -DNATS_BUILD_WITH_TLS=ON -DNATS_BUILD_STREAMING=OFF && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig
 
 WORKDIR /app
 COPY . .
@@ -41,7 +53,11 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     ca-certificates \
     netcat-openbsd \
+    libcurl4 \
+    libjsoncpp25 \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /usr/local/lib/libnats* /usr/lib/
 
 WORKDIR /app
 COPY --from=build /app/build/bin/availability_engine .
