@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Room, BookingFormData } from '../types';
+import { Room, BookingFormData, Building } from '../types';
 import { roomsApi } from '../api/rooms';
 import { bookingsApi } from '../api/bookings';
 import { useAuthStore } from '../store/useAuthStore';
@@ -12,6 +12,7 @@ const BookingPage: React.FC = () => {
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
 
   const [room, setRoom] = useState<Room | null>(null);
+  const [building, setBuilding] = useState<Building | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,13 +25,48 @@ const BookingPage: React.FC = () => {
     title: '',
   });
 
+  const extractFloorFromCode = (code: string): number | undefined => {
+    if (!code) return undefined;
+    
+    const match = code.match(/^(\d{1,3})/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num >= 1 && num <= 20) {
+        return num;
+      } else if (num >= 100 && num <= 199) {
+        return 1;
+      } else if (num >= 200 && num <= 299) {
+        return 2;
+      } else if (num >= 300 && num <= 399) {
+        return 3;
+      } else if (num >= 400 && num <= 499) {
+        return 4;
+      } else if (num >= 500 && num <= 599) {
+        return 5;
+      }
+    }
+    return undefined;
+  };
+
   const loadRoom = async () => {
     if (!roomId) return;
 
     try {
       setLoading(true);
-      const data = await roomsApi.getById(roomId);
-      setRoom(data);
+      const [roomData, buildingsData] = await Promise.all([
+        roomsApi.getById(roomId),
+        roomsApi.getBuildings(),
+      ]);
+      
+      const foundBuilding = buildingsData.find(b => b.id === roomData.buildingId);
+      const floor = extractFloorFromCode(roomData.code);
+      
+      setRoom({
+        ...roomData,
+        building: foundBuilding?.name || 'Неизвестное здание',
+        floor,
+      });
+      setBuilding(foundBuilding || null);
     } catch (err: any) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         return;
@@ -129,7 +165,9 @@ const BookingPage: React.FC = () => {
             <div className="room-summary">
               <h2>{room.name}</h2>
               <p>
-                {room.building}, {room.floor} этаж • Вместимость: {room.capacity} мест
+                {room.building || building?.name || 'Неизвестное здание'}
+                {room.floor && ` • ${room.floor} этаж`}
+                {` • Вместимость: ${room.capacity} мест`}
               </p>
             </div>
           )}

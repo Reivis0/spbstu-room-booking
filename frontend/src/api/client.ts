@@ -1,8 +1,6 @@
 import axios from 'axios';
 
-const isDevelopment = process.env.NODE_ENV === 'development';
-const API_BASE_URL = process.env.REACT_APP_API_URL || 
-  (isDevelopment ? '/api/v1' : 'http://localhost:8081/api/v1/');
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api/v1';
 
 console.log('API Base URL:', API_BASE_URL);
 
