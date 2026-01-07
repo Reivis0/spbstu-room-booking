@@ -7,7 +7,7 @@ std::unique_ptr<AsyncRoomService> service;
 
 void SignalHandler(int signal) 
 {
-    LOG_INFO("Received signal " + std::to_string(signal) + ", shutting down...");
+    LOG_INFO("AVAILABILITY_ENGINE: ASINC_ROOM_SERVICE:Received signal " + std::to_string(signal) + ", shutting down...");
     if (service)
     {
         service->shutdown();
@@ -30,15 +30,15 @@ int main()
         service = std::make_unique<AsyncRoomService>(
             redis_client, pg_client, nats_client);
         
-        LOG_INFO("Async Room Service starting...");
+        LOG_INFO("AVAILABILITY_ENGINE: ASINC_ROOM_SERVICE: Async Room Service starting...");
         service->start();
         
     } catch (const std::exception& e)
     {
-        LOG_ERROR(std::string("Exception: ") + e.what());
+        LOG_ERROR("AVAILABILITY_ENGINE: ASINC_ROOM_SERVICE: " + std::string("Exception: ") + e.what());
         return EXIT_FAILURE;
     }
     
-    LOG_INFO("Async Room Service stopped.");
+    LOG_INFO("AVAILABILITY_ENGINE: ASINC_ROOM_SERVICE: Async Room Service stopped.");
     return EXIT_SUCCESS;
 }

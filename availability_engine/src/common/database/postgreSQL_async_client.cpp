@@ -1,5 +1,6 @@
 #include "postgreSQL_async_client.hpp"
 
+#include "logger.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -40,7 +41,7 @@ std::map<std::string, std::string> PostgreSQLAsyncClient::Connector::read_config
   std::ifstream f("configs/pg_config.ini");
   if (!f.is_open())
   {
-    LOG_ERROR("Failed to open config file");
+    LOG_ERROR("PG: Failed to open config file");
     return cfg;
   }
   std::string line, section;
@@ -119,7 +120,7 @@ void PostgreSQLAsyncClient::begin_async_connect()
   if (!m_connect.connection) {
     m_connect.status = ConnectStatus::ERROR;
     m_connect.error_msg = "Failed to create connection object";
-    LOG_ERROR(m_connect.error_msg);
+    LOG_ERROR("PG: " + m_connect.error_msg);
     return;
   }
   if (PQsetnonblocking(m_connect.connection, 1) != 0)
@@ -159,7 +160,7 @@ void PostgreSQLAsyncClient::arm_connect_poll()
       m_connect.status = ConnectStatus::CONNECTED;
       m_connect.is_connected = true;
       update_interests(false,false);
-      LOG_INFO("Connected PG");
+      LOG_INFO("PG: Connected PG");
       try_send_next();
       break;
     case PGRES_POLLING_FAILED:
@@ -167,7 +168,7 @@ void PostgreSQLAsyncClient::arm_connect_poll()
       m_connect.status = ConnectStatus::ERROR;
       m_connect.error_msg = std::string("Connection failed: ") + PQerrorMessage(m_connect.connection);
       update_interests(false,false);
-      LOG_ERROR(m_connect.error_msg);
+      LOG_ERROR("PG: " + m_connect.error_msg);
       break;
   }
 }
@@ -190,7 +191,7 @@ void PostgreSQLAsyncClient::disconnect()
   m_connect.is_connected = false;
   m_connect.status = ConnectStatus::ERROR;
   update_interests(false,false);
-  LOG_INFO("disconnect PG");
+  LOG_INFO("PG: disconnect PG");
 }
 
 void PostgreSQLAsyncClient::run_loop()
@@ -212,7 +213,7 @@ void PostgreSQLAsyncClient::run_loop()
     if (pr < 0)
     {
       if (errno == EINTR) continue;
-      LOG_ERROR("poll error: " + std::string(strerror(errno)));
+      LOG_ERROR("PG: poll error: " + std::string(strerror(errno)));
       continue;
     }
     if (pr == 0)
@@ -223,7 +224,7 @@ void PostgreSQLAsyncClient::run_loop()
 
     if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
     {
-      LOG_ERROR("socket error/hup");
+      LOG_ERROR("PG: socket error/hup");
       disconnect();
       continue;
     }
@@ -251,7 +252,7 @@ void PostgreSQLAsyncClient::on_readable()
 {
   if (PQconsumeInput(m_connect.connection) != 1)
   {
-    LOG_ERROR(std::string("PQconsumeInput: ") + PQerrorMessage(m_connect.connection));
+    LOG_ERROR("PG: " + std::string("PQconsumeInput: ") + PQerrorMessage(m_connect.connection));
     disconnect();
     return;
   }
@@ -262,102 +263,100 @@ void PostgreSQLAsyncClient::on_readable()
 }
 
 void PostgreSQLAsyncClient::drain_results(PendingQuery& q) {
-  Result out;
-  for (PGresult* r = PQgetResult(m_connect.connection); r; r = PQgetResult(m_connect.connection))
-  {
-    auto st = PQresultStatus(r);
-    if (st == PGRES_TUPLES_OK)
-    {
-      int nf = PQnfields(r), nt = PQntuples(r);
-      for (int i=0;i<nt;++i)
-      {
-        Row row; row.reserve(nf);
-        for (int j=0;j<nf;++j)
-        {
-          row.emplace_back(PQgetisnull(r,i,j) ? "" : PQgetvalue(r,i,j));
-        }
-        out.emplace_back(std::move(row));
-      }
-    } else if (st == PGRES_COMMAND_OK)
-    {
-    } 
-    else
-    {
-      std::string err = PQresultErrorMessage(r);
-      PQclear(r);
-      PendingQuery failed = std::move(*m_inflight);
-      m_inflight.reset();
-      switch (failed.kind) {
-        case PendingQuery::K_BookingsByRoomDate:
-          FinishBookingsByRoomDate_(this, failed, {}, false, err.c_str());
-          break;
-        case PendingQuery::K_ConflictsByInterval:
-          FinishConflicts_(this, failed, {}, false, err.c_str());
-          break;
-        default: break;
-      }
-      try_send_next();
-      return;
-    }
-    PQclear(r);
-  }
+    Result out;
+    std::string err_msg;
+    bool success = true;
 
-  PendingQuery done = std::move(*m_inflight);
-  m_inflight.reset();
-  switch (done.kind)
-  {
-    case PendingQuery::K_BookingsByRoomDate:
-      FinishBookingsByRoomDate_(this, done, std::move(out), true, nullptr);
-      break;
-    case PendingQuery::K_ConflictsByInterval:
-      FinishConflicts_(this, done, std::move(out), true, nullptr);
-      break;
-    default: break;
-  }
-  try_send_next();
+    while (PGresult* r = PQgetResult(m_connect.connection)) {
+        auto st = PQresultStatus(r);
+        if (st == PGRES_TUPLES_OK || st == PGRES_COMMAND_OK) {
+            int nf = PQnfields(r);
+            int nt = PQntuples(r);
+            for (int i = 0; i < nt; ++i) {
+                Row row_vec;
+                row_vec.reserve(nf);
+                for (int j = 0; j < nf; ++j) {
+                    if (PQgetisnull(r, i, j)) row_vec.push_back("");
+                    else row_vec.push_back(PQgetvalue(r, i, j));
+                }
+                out.push_back(std::move(row_vec));
+            }
+        } else {
+             if (st == PGRES_FATAL_ERROR) {
+                 success = false;
+                 err_msg = PQresultErrorMessage(r);
+             }
+        }
+        PQclear(r);
+    }
+    
+    m_inflight.reset();
+
+    if (q.user_cb) {
+        switch (q.kind) {
+            case PendingQuery::K_BookingsByRoomDate:
+                FinishBookingsByRoomDate_(this, q, std::move(out), success, err_msg.c_str());
+                break;
+            case PendingQuery::K_ConflictsByInterval:
+                FinishConflicts_(this, q, std::move(out), success, err_msg.c_str());
+                break;
+            case PendingQuery::K_Generic:
+                FinishGeneric_(this, q, std::move(out), success, err_msg.c_str());
+                break;
+        }
+    }
+
+    try_send_next();
 }
 
 void PostgreSQLAsyncClient::try_send_next()
 {
-  if (m_connect.status != ConnectStatus::CONNECTED) return;
-  if (m_inflight) return;
-  if (m_queue.empty()) return;
+    if (m_inflight) return;
+    if (!m_connect.is_connected) return;
 
-  m_inflight.emplace(std::move(m_queue.front()));
-  m_queue.erase(m_queue.begin());
-  auto& q = *m_inflight;
+    std::lock_guard<std::mutex> lock(m_queue_mutex);
+    if (m_queue.empty()) return;
 
-  std::vector<const char*> vals;
-  std::vector<int> lens, fmts;
-  vals.reserve(q.params.size());
-  lens.reserve(q.params.size());
-  fmts.reserve(q.params.size());
-  for (auto& p : q.params)
-  {
-    vals.push_back(p.c_str());
-    lens.push_back((int)p.size());
-    fmts.push_back(0);
-  }
+    m_inflight = std::move(m_queue.front());
+    m_queue.erase(m_queue.begin());
+    
+    PendingQuery& q = *m_inflight;
+    
+    std::vector<const char*> vals;
+    std::vector<int> lens, fmts;
+    vals.reserve(q.params.size());
+    lens.reserve(q.params.size());
+    fmts.reserve(q.params.size());
 
-  if (PQsendQueryParams(m_connect.connection, q.sql.c_str(),
-                        (int)q.params.size(), nullptr,
-                        vals.data(), lens.data(), fmts.data(), 0) != 1)
-  {
-    std::string err = PQerrorMessage(m_connect.connection);
-    PendingQuery bad = std::move(q);
-    m_inflight.reset();
-    switch (bad.kind) {
-      case PendingQuery::K_BookingsByRoomDate:
-        FinishBookingsByRoomDate_(this, bad, {}, false, err.c_str());
-        break;
-      case PendingQuery::K_ConflictsByInterval:
-        FinishConflicts_(this, bad, {}, false, err.c_str());
-        break;
-      default: break;
+    for (const auto& p : q.params) {
+        vals.push_back(p.c_str());
+        lens.push_back((int)p.size());
+        fmts.push_back(0);
     }
-    return;
-  }
-  update_interests(true, m_want_write);
+
+    int res = PQsendQueryParams(m_connect.connection, q.sql.c_str(),
+                                (int)q.params.size(), nullptr,
+                                vals.data(), lens.data(), fmts.data(), 0);
+
+    if (res != 1) {
+        std::string err = PQerrorMessage(m_connect.connection);
+        PendingQuery bad = std::move(*m_inflight);
+        m_inflight.reset();
+        
+        if (bad.user_cb) {
+            Result empty;
+            if (bad.kind == PendingQuery::K_Generic) {
+                FinishGeneric_(this, bad, std::move(empty), false, err.c_str());
+            } else if (bad.kind == PendingQuery::K_BookingsByRoomDate) {
+                 FinishBookingsByRoomDate_(this, bad, std::move(empty), false, err.c_str());
+            } else if (bad.kind == PendingQuery::K_ConflictsByInterval) {
+                 FinishConflicts_(this, bad, std::move(empty), false, err.c_str());
+            }
+        }
+        return;
+    }
+
+    update_interests(true, m_want_write);
 }
 
 
@@ -445,4 +444,22 @@ void PostgreSQLAsyncClient::FinishConflicts_(PostgreSQLAsyncClient*, PendingQuer
   std::vector<Booking> tmp;
   mapResultToBookings(r, tmp);
   cb->onConflicts(tmp.data(), tmp.size(), true, nullptr);
+}
+
+void PostgreSQLAsyncClient::execute(const std::string& sql, const std::vector<std::string>& params, IGenericCb* cb) {
+    PendingQuery q;
+    q.kind = PendingQuery::K_Generic;
+    q.sql = sql;
+    q.params = params;
+    q.user_cb = cb;
+
+    {
+        std::lock_guard<std::mutex> lock(m_queue_mutex);
+        m_queue.emplace_back(std::move(q));
+    }
+}
+
+void PostgreSQLAsyncClient::FinishGeneric_(PostgreSQLAsyncClient* self, PendingQuery& q, Result&& r, bool ok, const char* err) {
+    auto* cb = static_cast<IGenericCb*>(q.user_cb);
+    if (cb) cb->onResult(r, ok, err);
 }
