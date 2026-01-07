@@ -188,6 +188,19 @@ services:
       retries: 3
       start_period: 60s
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: booking-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=/api/v1
+    networks:
+      - booking-network
+    restart: unless-stopped
+
 # TODO: В будущем добавить дописанный и настроенный nginx
 
 volumes:
@@ -207,4 +220,5 @@ networks:
       config:
         - subnet: 172.28.0.0/16
           gateway: 172.28.0.1
+
 
