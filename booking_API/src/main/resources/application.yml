@@ -32,3 +32,12 @@ nats:
 availability-engine:
   host: ${AVAILABILITY_ENGINE_HOST}
   port: ${AVAILABILITY_ENGINE_PORT}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always

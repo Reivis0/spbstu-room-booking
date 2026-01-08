@@ -10,8 +10,8 @@ pkg_check_modules(REDIS REQUIRED hiredis)
 pkg_check_modules(POSTGRESQL REQUIRED libpq)
 
 
-file(COPY ${CMAKE_SOURCE_DIR}/include/configs/
-     DESTINATION ${CMAKE_BINARY_DIR}/bin/configs)
+# file(COPY ${CMAKE_SOURCE_DIR}/include/configs/
+#      DESTINATION ${CMAKE_BINARY_DIR}/bin/configs)
 
 add_executable(availability_engine
     src/main.cpp

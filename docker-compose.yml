@@ -93,18 +93,18 @@ services:
     networks:
       - booking-net
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/healthz"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 20s
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+    #   interval: 10s
+    #   timeout: 3s
+    #   retries: 5
+    #   start_period: 20s
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    command: ["-js", "-sd", "/data"]
+    command: ["-js", "-sd", "/data", "-m", "8222"]
     stop_signal: SIGTERM
     stop_grace_period: 180s
 
@@ -192,16 +192,16 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: /api/v1
     container_name: booking-frontend
     ports:
       - "3000:80"
     environment:
-      - REACT_APP_API_URL=/api/v1
+      - TZ=${TZ}
     networks:
       - booking-net
     restart: unless-stopped
-
-# TODO: В будущем добавить дописанный и настроенный nginx
 
 volumes:
   postgres_data:
