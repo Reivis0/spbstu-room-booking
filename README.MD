@@ -103,6 +103,14 @@ Estimated total storage: ~50 GB за 5 лет
 
 ## 🏗️ Architecture
 
+### 🧩 UML Component Diagram
+
+![UML Diagram](./docs/img/uml.png)
+
+### 🔄 Sequence Diagram
+
+![Sequence Diagram](./docs/img/diagram.png)
+
 ### 🗄️ Схема базы данных
 
 #### 📋 Основные таблицы:
