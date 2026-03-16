@@ -22,11 +22,10 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libjsoncpp-dev \
     libgtest-dev \
-    libgmock-dev \
-    && rm -rf /var/lib/apt/lists/*
+    libgmock-dev
 
 WORKDIR /tmp
-RUN git clone https://github.com/nats-io/nats.c.git && \
+RUN git clone --depth 1 https://github.com/nats-io/nats.c.git && \
     cd nats.c && \
     cmake . -DNATS_BUILD_WITH_TLS=ON -DNATS_BUILD_STREAMING=OFF && \
     make -j$(nproc) && \
@@ -36,7 +35,7 @@ RUN git clone https://github.com/nats-io/nats.c.git && \
 WORKDIR /app
 COPY . .
 
-RUN mkdir build && cd build && \
+RUN mkdir -p build && cd build && \
     cmake .. && \
     make -j$(nproc) VERBOSE=1
 
@@ -44,7 +43,7 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libevent-2.1-7 \
     libhiredis0.14 \
@@ -90,7 +89,7 @@ host=${NATS_HOST:-localhost}\n\
 client_port=${NATS_PORT:-4222}\n\
 EOF\n\
 \n\
-exec ./availability_engine\n\
+exec ./availability_engine "$@"\n\
 ' > entrypoint.sh && chmod +x entrypoint.sh
 
 EXPOSE 50051

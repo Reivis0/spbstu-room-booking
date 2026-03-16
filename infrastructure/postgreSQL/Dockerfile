@@ -5,9 +5,6 @@ RUN apk add --no-cache postgresql16-contrib
 COPY postgresql.conf /etc/postgresql/postgresql.conf
 COPY pg_hba.conf /etc/postgresql/pg_hba.conf
 
-COPY migrations/1_init.up.sql /docker-entrypoint-initdb.d/
-COPY migrations/1_filling.sql /docker-entrypoint-initdb.d/
-
 RUN chown -R postgres:postgres /etc/postgresql/
 
 CMD [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf" ]
