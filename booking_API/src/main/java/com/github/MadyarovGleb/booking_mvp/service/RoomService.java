@@ -1,6 +1,7 @@
 package com.github.MadyarovGleb.booking_mvp.service;
 
 import room_service.*;
+import com.github.MadyarovGleb.booking_mvp.exception.NotFoundException;
 import com.github.MadyarovGleb.booking_mvp.entity.Room;
 import com.github.MadyarovGleb.booking_mvp.repository.RoomRepository;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
@@ -30,7 +31,8 @@ public class RoomService {
         Room cached = redis.get(key, Room.class);
         if (cached != null) return cached;
 
-        Room room = roomRepository.findById(id).orElseThrow();
+        Room room = roomRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Room not found: " + id));
         redis.set(key, room, Duration.ofHours(1));
         return room;
     }

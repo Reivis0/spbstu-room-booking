@@ -39,12 +39,8 @@ public class RoomController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> get(@PathVariable UUID id) {
-        try {
-            return ResponseEntity.ok(roomService.getById(id));
-        } catch (Exception e) {
-            return ResponseEntity.status(404).build();
-        }
+    public ResponseEntity<Room> get(@PathVariable UUID id) {
+        return ResponseEntity.ok(roomService.getById(id));
     }
 
     @GetMapping("/{id}/availability")
@@ -53,11 +49,7 @@ public class RoomController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date,
             @RequestParam(defaultValue = "30") int min_duration
     ) {
-        try {
-            var slots = roomService.getAvailability(id, date, min_duration);
-            return ResponseEntity.ok(slots);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(e.getMessage());
-        }
+        var slots = roomService.getAvailability(id, date, min_duration);
+        return ResponseEntity.ok(slots);
     }
 }

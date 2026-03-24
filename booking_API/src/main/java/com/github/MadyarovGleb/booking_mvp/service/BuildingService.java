@@ -1,5 +1,6 @@
 package com.github.MadyarovGleb.booking_mvp.service;
 
+import com.github.MadyarovGleb.booking_mvp.exception.NotFoundException;
 import com.github.MadyarovGleb.booking_mvp.entity.Building;
 import com.github.MadyarovGleb.booking_mvp.repository.BuildingRepository;
 import org.springframework.stereotype.Service;
@@ -34,7 +35,8 @@ public class BuildingService {
         Building cached = redis.get(key, Building.class);
         if (cached != null) return cached;
 
-        Building building = repo.findById(id).orElseThrow();
+        Building building = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("Building not found: " + id));
         redis.set(key, building, Duration.ofHours(24));
         return building;
     }

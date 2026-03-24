@@ -1,5 +1,9 @@
 package com.github.MadyarovGleb.booking_mvp.service;
 
+import com.github.MadyarovGleb.booking_mvp.exception.ConflictException;
+import com.github.MadyarovGleb.booking_mvp.exception.ForbiddenException;
+import com.github.MadyarovGleb.booking_mvp.exception.NotFoundException;
+import com.github.MadyarovGleb.booking_mvp.exception.ValidationException;
 import com.github.MadyarovGleb.booking_mvp.dto.CreateBookingRequest;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking;
 import com.github.MadyarovGleb.booking_mvp.repository.BookingRepository;
@@ -47,7 +51,7 @@ public class BookingService {
                 .toList();
 
         if (!realConflicts.isEmpty()) {
-            throw new BookingConflictException(realConflicts);
+            throw new ConflictException("booking_conflict", realConflicts);
         }
 
         Booking booking = Booking.builder()
@@ -72,10 +76,12 @@ public class BookingService {
 
     @Transactional
     public Booking updateBooking(UUID actorId, String actorRole, UUID bookingId, CreateBookingRequest req) {
-        Booking booking = bookingRepository.findById(bookingId).orElseThrow();
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Booking not found: " + bookingId));
         checkActorPermission(booking, actorId, actorRole);
         if (booking.getStartsAt().isBefore(OffsetDateTime.now()))
-            throw new IllegalArgumentException("cannot update a booking that already started");
+            throw new ValidationException("cannot update a booking that already started");
+        validateTimes(req);
 
         ValidationResult result = availability.validate(
                 req.getRoomId(), req.getStartsAt(), req.getEndsAt(), bookingId
@@ -86,7 +92,7 @@ public class BookingService {
                 .toList();
 
         if (!realConflicts.isEmpty()) {
-            throw new BookingConflictException(realConflicts);
+            throw new ConflictException("booking_conflict", realConflicts);
         }
 
         invalidateCache(booking);
@@ -107,7 +113,8 @@ public class BookingService {
 
     @Transactional
     public Booking cancel(UUID id, UUID actorId, String actorRole) {
-        Booking booking = bookingRepository.findById(id).orElseThrow();
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Booking not found: " + id));
         checkActorPermission(booking, actorId, actorRole);
 
         booking.setStatus(Booking.BookingStatus.cancelled);
@@ -122,15 +129,24 @@ public class BookingService {
     }
 
     private void validateTimes(CreateBookingRequest req) {
+        if (req == null) {
+            throw new ValidationException("request body is required");
+        }
+        if (req.getRoomId() == null) {
+            throw new ValidationException("room_id is required");
+        }
+        if (req.getStartsAt() == null || req.getEndsAt() == null) {
+            throw new ValidationException("starts_at and ends_at are required");
+        }
         if (req.getStartsAt().isBefore(OffsetDateTime.now()))
-            throw new IllegalArgumentException("starts_at in the past");
+            throw new ValidationException("starts_at in the past");
         if (!req.getEndsAt().isAfter(req.getStartsAt()))
-            throw new IllegalArgumentException("ends_at must be after starts_at");
+            throw new ValidationException("ends_at must be after starts_at");
     }
 
     private void checkActorPermission(Booking booking, UUID actorId, String actorRole) {
         if (!booking.getUserId().equals(actorId) && !"admin".equals(actorRole))
-            throw new SecurityException("forbidden");
+            throw new ForbiddenException("forbidden");
     }
 
     private void invalidateCache(Booking booking) {
@@ -140,7 +156,7 @@ public class BookingService {
 
     public Booking getById(UUID id) {
         return bookingRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + id));
+                .orElseThrow(() -> new NotFoundException("Booking not found: " + id));
     }
 
     public List<Booking> listByUser(UUID userId) {

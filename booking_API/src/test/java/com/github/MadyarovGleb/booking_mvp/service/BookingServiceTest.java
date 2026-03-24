@@ -2,6 +2,9 @@ package com.github.MadyarovGleb.booking_mvp.service;
 
 import com.github.MadyarovGleb.booking_mvp.dto.CreateBookingRequest;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking;
+import com.github.MadyarovGleb.booking_mvp.exception.ConflictException;
+import com.github.MadyarovGleb.booking_mvp.exception.ForbiddenException;
+import com.github.MadyarovGleb.booking_mvp.exception.ValidationException;
 import com.github.MadyarovGleb.booking_mvp.repository.BookingRepository;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.BookingConflict;
@@ -99,12 +102,12 @@ class BookingServiceTest {
         when(availability.validate(any(), any(), any(), isNull()))
                 .thenReturn(new ValidationResult(false, null, List.of(conflict)));
 
-        BookingConflictException ex = assertThrows(
-                BookingConflictException.class,
+        ConflictException ex = assertThrows(
+                ConflictException.class,
                 () -> bookingService.createBooking(userId, req)
         );
 
-        assertEquals(1, ex.getConflicts().size());
+        assertNotNull(ex.getDetails());
         verifyNoInteractions(natsPublisher);
     }
 
@@ -116,7 +119,7 @@ class BookingServiceTest {
                 .endsAt(OffsetDateTime.now().plusHours(1))
                 .build();
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ValidationException.class,
                 () -> bookingService.createBooking(userId, req));
     }
 
@@ -172,7 +175,7 @@ class BookingServiceTest {
         when(bookingRepository.findById(bookingId))
                 .thenReturn(Optional.of(existing));
 
-        assertThrows(SecurityException.class, () ->
+        assertThrows(ForbiddenException.class, () ->
                 bookingService.updateBooking(userId, "user", bookingId,
                         CreateBookingRequest.builder().build()));
     }

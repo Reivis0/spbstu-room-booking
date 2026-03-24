@@ -24,11 +24,7 @@ public class BuildingController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> get(@PathVariable UUID id) {
-        try {
-            return ResponseEntity.ok(service.findById(id));
-        } catch (Exception e) {
-            return ResponseEntity.status(404).build();
-        }
+    public ResponseEntity<Building> get(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.findById(id));
     }
 }

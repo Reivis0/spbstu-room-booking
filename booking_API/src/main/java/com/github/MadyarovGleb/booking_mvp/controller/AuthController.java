@@ -3,7 +3,7 @@ package com.github.MadyarovGleb.booking_mvp.controller;
 import com.github.MadyarovGleb.booking_mvp.config.JwtUtil;
 import com.github.MadyarovGleb.booking_mvp.dto.AuthRequests;
 import com.github.MadyarovGleb.booking_mvp.service.AuthService;
-import jakarta.servlet.http.HttpServletRequest;
+import io.jsonwebtoken.JwtException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -52,7 +52,7 @@ public class AuthController {
 
             var newAccessToken = jwtUtil.generate(userId, email, role);
             return ResponseEntity.ok(Map.of("access_token", newAccessToken));
-        } catch (Exception e) {
+        } catch (JwtException | IllegalArgumentException e) {
             return ResponseEntity.status(401).body(Map.of("error","invalid_refresh_token"));
         }
     }
