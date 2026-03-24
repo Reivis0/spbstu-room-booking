@@ -11,6 +11,9 @@ import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngi
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.BookingConflict;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.ValidationResult;
 import com.github.MadyarovGleb.booking_mvp.service.nats.NatsPublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +23,8 @@ import java.util.UUID;
 
 @Service
 public class BookingService {
+
+    private static final Logger logger = LoggerFactory.getLogger(BookingService.class);
 
     private final BookingRepository bookingRepository;
     private final AvailabilityEngineClient availability;
@@ -40,7 +45,10 @@ public class BookingService {
 
     @Transactional
     public Booking createBooking(UUID userId, CreateBookingRequest req) {
+        MDC.put("user_id", userId.toString());
         validateTimes(req);
+        MDC.put("room_id", req.getRoomId().toString());
+        logger.info("Booking creation validation started");
 
         ValidationResult result = availability.validate(
                 req.getRoomId(), req.getStartsAt(), req.getEndsAt(), null
@@ -51,6 +59,7 @@ public class BookingService {
                 .toList();
 
         if (!realConflicts.isEmpty()) {
+            logger.warn("Booking creation failed due to conflict conflicts_count={}", realConflicts.size());
             throw new ConflictException("booking_conflict", realConflicts);
         }
 
@@ -65,23 +74,31 @@ public class BookingService {
                 .build();
 
         Booking saved = bookingRepository.save(booking);
+        if (saved.getId() != null) {
+            MDC.put("booking_id", saved.getId().toString());
+        }
 
         natsPublisher.publish("booking.created",
                 String.format("{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
                         saved.getId(), saved.getUserId(), saved.getRoomId()));
 
         invalidateCache(saved);
+        logger.info("Booking created successfully");
         return saved;
     }
 
     @Transactional
     public Booking updateBooking(UUID actorId, String actorRole, UUID bookingId, CreateBookingRequest req) {
+        MDC.put("user_id", actorId.toString());
+        MDC.put("booking_id", bookingId.toString());
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Booking not found: " + bookingId));
         checkActorPermission(booking, actorId, actorRole);
         if (booking.getStartsAt().isBefore(OffsetDateTime.now()))
             throw new ValidationException("cannot update a booking that already started");
         validateTimes(req);
+        MDC.put("room_id", req.getRoomId().toString());
+        logger.info("Booking update validation started");
 
         ValidationResult result = availability.validate(
                 req.getRoomId(), req.getStartsAt(), req.getEndsAt(), bookingId
@@ -92,6 +109,7 @@ public class BookingService {
                 .toList();
 
         if (!realConflicts.isEmpty()) {
+            logger.warn("Booking update failed due to conflict conflicts_count={}", realConflicts.size());
             throw new ConflictException("booking_conflict", realConflicts);
         }
 
@@ -108,11 +126,14 @@ public class BookingService {
                         updated.getId(), updated.getUserId(), updated.getRoomId()));
 
         invalidateCache(updated);
+        logger.info("Booking updated successfully");
         return updated;
     }
 
     @Transactional
     public Booking cancel(UUID id, UUID actorId, String actorRole) {
+        MDC.put("user_id", actorId.toString());
+        MDC.put("booking_id", id.toString());
         Booking booking = bookingRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Booking not found: " + id));
         checkActorPermission(booking, actorId, actorRole);
@@ -125,41 +146,57 @@ public class BookingService {
                         cancelled.getId(), cancelled.getUserId(), cancelled.getRoomId()));
 
         invalidateCache(cancelled);
+        logger.info("Booking cancelled successfully");
         return cancelled;
     }
 
     private void validateTimes(CreateBookingRequest req) {
         if (req == null) {
+            logger.warn("Booking validation failed because request body is missing");
             throw new ValidationException("request body is required");
         }
         if (req.getRoomId() == null) {
+            logger.warn("Booking validation failed because room_id is missing");
             throw new ValidationException("room_id is required");
         }
         if (req.getStartsAt() == null || req.getEndsAt() == null) {
+            logger.warn("Booking validation failed because time bounds are missing");
             throw new ValidationException("starts_at and ends_at are required");
         }
-        if (req.getStartsAt().isBefore(OffsetDateTime.now()))
+        if (req.getStartsAt().isBefore(OffsetDateTime.now())) {
+            logger.warn("Booking validation failed because starts_at is in the past");
             throw new ValidationException("starts_at in the past");
-        if (!req.getEndsAt().isAfter(req.getStartsAt()))
+        }
+        if (!req.getEndsAt().isAfter(req.getStartsAt())) {
+            logger.warn("Booking validation failed because ends_at is not after starts_at");
             throw new ValidationException("ends_at must be after starts_at");
+        }
     }
 
     private void checkActorPermission(Booking booking, UUID actorId, String actorRole) {
-        if (!booking.getUserId().equals(actorId) && !"admin".equals(actorRole))
+        if (!booking.getUserId().equals(actorId) && !"admin".equals(actorRole)) {
+            logger.warn("Booking operation rejected due to insufficient permissions");
             throw new ForbiddenException("forbidden");
+        }
     }
 
     private void invalidateCache(Booking booking) {
         redis.delete(String.format("availability:%s:%s", booking.getRoomId(), booking.getStartsAt().toLocalDate()));
         redis.deletePattern("rooms:search:*");
+        logger.debug("Booking related cache invalidated");
     }
 
     public Booking getById(UUID id) {
+        MDC.put("booking_id", id.toString());
+        logger.debug("Fetching booking by id");
         return bookingRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Booking not found: " + id));
     }
 
     public List<Booking> listByUser(UUID userId) {
-        return bookingRepository.findByUserId(userId);
+        MDC.put("user_id", userId.toString());
+        List<Booking> bookings = bookingRepository.findByUserId(userId);
+        logger.info("Fetched bookings by user count={}", bookings.size());
+        return bookings;
     }
 }

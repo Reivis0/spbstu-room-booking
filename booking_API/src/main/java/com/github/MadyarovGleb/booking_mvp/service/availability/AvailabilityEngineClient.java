@@ -1,8 +1,9 @@
 package com.github.MadyarovGleb.booking_mvp.service.availability;
 
-import com.google.protobuf.util.JsonFormat;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import room_service.*;
 import room_service.RoomServiceGrpc;
 import room_service.RoomServiceOuterClass.*;
@@ -15,30 +16,37 @@ import java.util.UUID;
 
 public class AvailabilityEngineClient {
 
+    private static final Logger logger = LoggerFactory.getLogger(AvailabilityEngineClient.class);
+
     private RoomServiceGrpc.RoomServiceBlockingStub stub;
 
     public AvailabilityEngineClient(String host, int port) throws InterruptedException {
-            int retries = 5;
-            while (true) {
+        int retries = 5;
+        while (true) {
+            try {
+                ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port)
+                        .usePlaintext()
+                        .build();
+                stub = RoomServiceGrpc.newBlockingStub(channel);
+                logger.info("Connected to Availability Engine host={} port={}", host, port);
+                break;
+            } catch (Exception e) {
+                if (--retries == 0) {
+                    logger.error("Failed to connect to Availability Engine host={} port={} retries_exhausted=true",
+                            host, port, e);
+                    throw e;
+                }
+                logger.warn("Failed to connect to Availability Engine host={} port={} retries_left={}",
+                        host, port, retries);
                 try {
-                    ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port)
-                            .usePlaintext()
-                            .build();
-                    stub = RoomServiceGrpc.newBlockingStub(channel);
-                    System.out.println("Connected to Availability Engine at " + host + ":" + port);
-                    break;
-                } catch (Exception e) {
-                    if (--retries == 0) throw e;
-                    System.out.println("Retrying connection to Availability Engine...");
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw ie;
-                    }
+                    Thread.sleep(2000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw ie;
                 }
             }
         }
+    }
 
     public List<TimeSlot> computeIntervals(String roomId, String date, String startTime, String endTime) {
         ComputeIntervalsRequest.Builder builder = ComputeIntervalsRequest.newBuilder()
@@ -50,11 +58,9 @@ public class AvailabilityEngineClient {
 
         ComputeIntervalsRequest request = builder.build();
 
-        logJson("ComputeIntervalsRequest", request);
-
         ComputeIntervalsResponse response = stub.computeIntervals(request);
-
-        logJson("ComputeIntervalsResponse", response);
+        logger.debug("Availability intervals computed room_id={} date={} slots_count={}",
+                roomId, date, response.getAvailableSlotsCount());
 
         return response.getAvailableSlotsList();
     }
@@ -71,10 +77,9 @@ public class AvailabilityEngineClient {
                 .setEndTime(endTime);
 
         ValidateRequest request = builder.build();
-        logJson("ValidateRequest", request);
-
         ValidateResponse response = stub.validate(request);
-        logJson("ValidateResponse", response);
+        logger.debug("Availability validation completed room_id={} date={} is_valid={} conflicts_count={}",
+                roomId, date, response.getIsValid(), response.getConflictsCount());
 
         List<BookingConflict> conflicts = new ArrayList<>();
         for (Conflict c : response.getConflictsList()) {
@@ -95,11 +100,9 @@ public class AvailabilityEngineClient {
                 .setDate(date)
                 .build();
 
-        logJson("OccupiedIntervalsRequest", request);
-
         OccupiedIntervalsResponse response = stub.occupiedIntervals(request);
-
-        logJson("OccupiedIntervalsResponse", response);
+        logger.debug("Occupied intervals fetched room_id={} date={} intervals_count={}",
+                roomId, date, response.getIntervalsCount());
 
         List<OccupiedSlot> result = new ArrayList<>();
         for (OccupiedSlotProto slot : response.getIntervalsList()) {
@@ -112,15 +115,6 @@ public class AvailabilityEngineClient {
             ));
         }
         return result;
-    }
-
-    private void logJson(String title, Object protoMessage) {
-        try {
-            System.out.println(title + " JSON:\n" +
-                    JsonFormat.printer().includingDefaultValueFields().print((com.google.protobuf.Message) protoMessage));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     public static class ValidationResult {
