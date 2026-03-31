@@ -2,12 +2,8 @@
 #define LOGGER_HPP
 
 #include <string>
-#include <fstream>
 #include <mutex>
-#include <ctime>
-#include <sstream>
-#include <iomanip>
-#include <iostream>
+
 
 enum class LogLevel
 {
@@ -29,18 +25,17 @@ public:
         return instance;
     }
 
-    void init(const std::string& filename = "logs.log");
+    void init() {};
 
     void log(LogLevel level, const std::string& message);
 
 private:
     Logger() = default;
-    ~Logger();
+    ~Logger() {};
 
     std::string getTimestamp();
     std::string levelToString(LogLevel level);
 
-    std::ofstream m_file;
     std::mutex m_mutex;
 };
 

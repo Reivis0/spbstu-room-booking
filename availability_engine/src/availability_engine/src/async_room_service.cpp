@@ -480,7 +480,7 @@ void AsyncRoomService::OcupiedIntervalsCallData::ProcessRequest()
   catch(const std::exception& ex)
   {
     m_responder.FinishWithError(grpc::Status(grpc::StatusCode::INTERNAL, ex.what()), this);
-    LOG_ERROR(ex.what());
+    LOG_ERROR(std::string("AVAILABILITY_ENGINE: ASINC_ROOM_SERVICE: ") + ex.what());
     m_status = FINISH;
   }
 }
@@ -500,9 +500,9 @@ AsyncRoomService::AsyncRoomService(
   if (m_redis_client) {
     m_redis_thread = std::thread([this]()
     {
-        LOG_INFO("Starting Redis event loop...");
+        LOG_INFO("AVAILABILITY_ENGINE: ASINC_ROOM_SERVICE: Starting Redis event loop...");
         m_redis_client->run_event_loop();
-        LOG_INFO("Redis event loop finished");
+        LOG_INFO("AVAILABILITY_ENGINE: ASINC_ROOM_SERVICE: Redis event loop finished");
     });
     m_redis_thread.detach();
 }

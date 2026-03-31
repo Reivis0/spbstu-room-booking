@@ -36,4 +36,4 @@ private:
     natsOptions* m_opts = nullptr;
 };
 
-#endif // NATS_ASYNC_CLIENT_HPP
+#endif
