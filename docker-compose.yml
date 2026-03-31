@@ -94,7 +94,7 @@ services:
       - booking-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/varz"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -131,6 +131,7 @@ services:
       AVAILABILITY_ENGINE_PORT: ${AVAILABILITY_ENGINE_PORT}
       TZ: ${TZ}
       JAVA_TOOL_OPTIONS: "-Xmx512m -XX:+UseG1GC"
+      SPRING_FLYWAY_ENABLED: "false"
     deploy:
       resources:
         limits:

@@ -7,14 +7,16 @@ import com.github.MadyarovGleb.booking_mvp.exception.ForbiddenException;
 import com.github.MadyarovGleb.booking_mvp.exception.ValidationException;
 import com.github.MadyarovGleb.booking_mvp.repository.BookingRepository;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
-import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.BookingConflict;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.ValidationResult;
-import com.github.MadyarovGleb.booking_mvp.service.nats.NatsPublisher;
+import com.github.MadyarovGleb.booking_mvp.service.outbox.OutboxEventType;
+import com.github.MadyarovGleb.booking_mvp.service.outbox.OutboxService;
+import com.github.MadyarovGleb.booking_mvp.service.saga.BookingSagaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -34,7 +36,10 @@ class BookingServiceTest {
     AvailabilityEngineClient availability;
 
     @Mock
-    NatsPublisher natsPublisher;
+    OutboxService outboxService;
+
+    @Mock
+    BookingSagaService bookingSagaService;
 
     @Mock
     RedisService redisService;
@@ -64,10 +69,7 @@ class BookingServiceTest {
                 .endsAt(end)
                 .build();
 
-        when(availability.validate(any(), any(), any(), isNull()))
-                .thenReturn(new ValidationResult(true, null, List.of()));
-
-        when(bookingRepository.save(any()))
+        when(bookingRepository.saveAndFlush(any()))
                 .thenAnswer(inv -> inv.getArgument(0));
 
         Booking result = bookingService.createBooking(userId, req);
@@ -77,12 +79,13 @@ class BookingServiceTest {
         assertEquals(roomId, result.getRoomId());
         assertEquals(Booking.BookingStatus.pending, result.getStatus());
 
-        verify(natsPublisher).publish(eq("booking.created"), anyString());
+        verify(bookingSagaService).startSaga(any(Booking.class));
         verify(redisService).deletePattern("rooms:search:*");
+        verifyNoInteractions(availability);
     }
 
     @Test
-    void createBooking_conflict_throwsException() {
+    void createBooking_doesNotRunExternalValidationSynchronously() {
         OffsetDateTime start = OffsetDateTime.now().plusHours(1);
         OffsetDateTime end = start.plusHours(2);
 
@@ -92,23 +95,13 @@ class BookingServiceTest {
                 .endsAt(end)
                 .build();
 
-        BookingConflict conflict = new BookingConflict(
-                UUID.randomUUID().toString(),
-                "10:00",
-                "11:00",
-                UUID.randomUUID().toString()
-        );
+        when(bookingRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        when(availability.validate(any(), any(), any(), isNull()))
-                .thenReturn(new ValidationResult(false, null, List.of(conflict)));
+        Booking booking = bookingService.createBooking(userId, req);
 
-        ConflictException ex = assertThrows(
-                ConflictException.class,
-                () -> bookingService.createBooking(userId, req)
-        );
-
-        assertNotNull(ex.getDetails());
-        verifyNoInteractions(natsPublisher);
+        assertNotNull(booking);
+        verifyNoInteractions(availability);
+        verify(bookingSagaService).startSaga(any(Booking.class));
     }
 
     @Test
@@ -120,6 +113,24 @@ class BookingServiceTest {
                 .build();
 
         assertThrows(ValidationException.class,
+                () -> bookingService.createBooking(userId, req));
+    }
+
+    @Test
+    void createBooking_dbOverlap_throwsConflict() {
+        OffsetDateTime start = OffsetDateTime.now().plusHours(1);
+        OffsetDateTime end = start.plusHours(2);
+
+        CreateBookingRequest req = CreateBookingRequest.builder()
+                .roomId(roomId)
+                .startsAt(start)
+                .endsAt(end)
+                .build();
+
+        when(bookingRepository.saveAndFlush(any()))
+                .thenThrow(new DataIntegrityViolationException("no_overlap"));
+
+        assertThrows(ConflictException.class,
                 () -> bookingService.createBooking(userId, req));
     }
 
@@ -158,7 +169,7 @@ class BookingServiceTest {
         );
 
         assertEquals(req.getRoomId(), updated.getRoomId());
-        verify(natsPublisher).publish(eq("booking.updated"), anyString());
+        verify(outboxService).addEvent(eq(OutboxEventType.BOOKING_UPDATED), anyMap());
     }
 
     @Test
@@ -205,7 +216,7 @@ class BookingServiceTest {
 
         assertEquals(Booking.BookingStatus.cancelled, cancelled.getStatus());
 
-        verify(natsPublisher).publish(eq("booking.cancelled"), anyString());
+        verify(outboxService).addEvent(eq(OutboxEventType.BOOKING_CANCELLED), anyMap());
         verify(redisService).delete(anyString());
     }
 }

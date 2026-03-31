@@ -7,18 +7,23 @@ import com.github.MadyarovGleb.booking_mvp.exception.ValidationException;
 import com.github.MadyarovGleb.booking_mvp.dto.CreateBookingRequest;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking;
 import com.github.MadyarovGleb.booking_mvp.repository.BookingRepository;
+import com.github.MadyarovGleb.booking_mvp.service.outbox.OutboxEventType;
+import com.github.MadyarovGleb.booking_mvp.service.outbox.OutboxService;
+import com.github.MadyarovGleb.booking_mvp.service.saga.BookingSagaService;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.BookingConflict;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.ValidationResult;
-import com.github.MadyarovGleb.booking_mvp.service.nats.NatsPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -28,18 +33,21 @@ public class BookingService {
 
     private final BookingRepository bookingRepository;
     private final AvailabilityEngineClient availability;
-    private final NatsPublisher natsPublisher;
+    private final OutboxService outboxService;
+    private final BookingSagaService bookingSagaService;
     private final RedisService redis;
 
     public BookingService(
             BookingRepository bookingRepository,
             AvailabilityEngineClient availability,
-            NatsPublisher natsPublisher,
+            OutboxService outboxService,
+            BookingSagaService bookingSagaService,
             RedisService redis
     ) {
         this.bookingRepository = bookingRepository;
         this.availability = availability;
-        this.natsPublisher = natsPublisher;
+        this.outboxService = outboxService;
+        this.bookingSagaService = bookingSagaService;
         this.redis = redis;
     }
 
@@ -48,20 +56,7 @@ public class BookingService {
         MDC.put("user_id", userId.toString());
         validateTimes(req);
         MDC.put("room_id", req.getRoomId().toString());
-        logger.info("Booking creation validation started");
-
-        ValidationResult result = availability.validate(
-                req.getRoomId(), req.getStartsAt(), req.getEndsAt(), null
-        );
-
-        List<BookingConflict> realConflicts = result.getConflicts().stream()
-                .filter(c -> c.getBookingId() != null && !c.getBookingId().isEmpty())
-                .toList();
-
-        if (!realConflicts.isEmpty()) {
-            logger.warn("Booking creation failed due to conflict conflicts_count={}", realConflicts.size());
-            throw new ConflictException("booking_conflict", realConflicts);
-        }
+        logger.info("Booking creation accepted, starting saga");
 
         Booking booking = Booking.builder()
                 .userId(userId)
@@ -73,17 +68,20 @@ public class BookingService {
                 .updatedAt(OffsetDateTime.now())
                 .build();
 
-        Booking saved = bookingRepository.save(booking);
+        Booking saved;
+        try {
+            saved = bookingRepository.saveAndFlush(booking);
+        } catch (DataIntegrityViolationException ex) {
+            logger.warn("Booking creation failed due to schedule conflict");
+            throw new ConflictException("booking_conflict");
+        }
         if (saved.getId() != null) {
             MDC.put("booking_id", saved.getId().toString());
         }
-
-        natsPublisher.publish("booking.created",
-                String.format("{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
-                        saved.getId(), saved.getUserId(), saved.getRoomId()));
+        bookingSagaService.startSaga(saved);
 
         invalidateCache(saved);
-        logger.info("Booking created successfully");
+        logger.info("Booking created in pending status, saga started");
         return saved;
     }
 
@@ -120,10 +118,7 @@ public class BookingService {
         booking.setEndsAt(req.getEndsAt());
         booking.setUpdatedAt(OffsetDateTime.now());
         Booking updated = bookingRepository.save(booking);
-
-        natsPublisher.publish("booking.updated",
-                String.format("{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
-                        updated.getId(), updated.getUserId(), updated.getRoomId()));
+        outboxService.addEvent(OutboxEventType.BOOKING_UPDATED, eventPayload(updated));
 
         invalidateCache(updated);
         logger.info("Booking updated successfully");
@@ -140,10 +135,7 @@ public class BookingService {
 
         booking.setStatus(Booking.BookingStatus.cancelled);
         Booking cancelled = bookingRepository.save(booking);
-
-        natsPublisher.publish("booking.cancelled",
-                String.format("{\"booking_id\":\"%s\",\"user_id\":\"%s\",\"room_id\":\"%s\"}",
-                        cancelled.getId(), cancelled.getUserId(), cancelled.getRoomId()));
+        outboxService.addEvent(OutboxEventType.BOOKING_CANCELLED, eventPayload(cancelled));
 
         invalidateCache(cancelled);
         logger.info("Booking cancelled successfully");
@@ -198,5 +190,16 @@ public class BookingService {
         List<Booking> bookings = bookingRepository.findByUserId(userId);
         logger.info("Fetched bookings by user count={}", bookings.size());
         return bookings;
+    }
+
+    private Map<String, Object> eventPayload(Booking booking) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("booking_id", booking.getId().toString());
+        payload.put("user_id", booking.getUserId().toString());
+        payload.put("room_id", booking.getRoomId().toString());
+        payload.put("starts_at", booking.getStartsAt().toString());
+        payload.put("ends_at", booking.getEndsAt().toString());
+        payload.put("status", booking.getStatus().name().toLowerCase());
+        return payload;
     }
 }

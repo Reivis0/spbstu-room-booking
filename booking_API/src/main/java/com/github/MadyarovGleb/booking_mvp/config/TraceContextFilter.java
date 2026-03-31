@@ -38,6 +38,7 @@ public class TraceContextFilter extends OncePerRequestFilter {
             MDC.remove("room_id");
             MDC.remove("building_id");
             MDC.remove("user_id");
+            MDC.remove("saga_id");
             MDC.remove("trace_id");
         }
     }

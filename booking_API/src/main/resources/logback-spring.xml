@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <property name="LOG_PATTERN"
-              value="%d{yyyy-MM-dd'T'HH:mm:ss.SSS'Z',UTC} %-5level [booking-api] [trace_id=%replace(%X{trace_id}){'^$','--'}]%replace(%X{user_id}){'^(.+)$',' [user_id=$1]'}%replace(%X{building_id}){'^(.+)$',' [building_id=$1]'}%replace(%X{room_id}){'^(.+)$',' [room_id=$1]'}%replace(%X{booking_id}){'^(.+)$',' [booking_id=$1]'} - %msg%replace(%xThrowable){'[\r\n\t]+',' | '}%n"/>
+              value="%d{yyyy-MM-dd'T'HH:mm:ss.SSS'Z',UTC} %-5level [booking-api] [trace_id=%replace(%X{trace_id}){'^$','--'}]%replace(%X{user_id}){'^(.+)$',' [user_id=$1]'}%replace(%X{building_id}){'^(.+)$',' [building_id=$1]'}%replace(%X{room_id}){'^(.+)$',' [room_id=$1]'}%replace(%X{booking_id}){'^(.+)$',' [booking_id=$1]'}%replace(%X{saga_id}){'^(.+)$',' [saga_id=$1]'} - %msg%replace(%xThrowable){'[\r\n\t]+',' | '}%n"/>
 
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
