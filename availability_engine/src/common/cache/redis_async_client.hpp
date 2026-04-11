@@ -48,7 +48,7 @@ public:
 
   void run_event_loop();
   void stop_event_loop();
-  bool is_connected() const { return m_connector.is_connected; }
+  bool is_connected() const; // Declaration only
 
   void get(const std::string& key, std::unique_ptr<IRedisCallback> cb);
   void setex(const std::string& key, int ttl_seconds, const std::string& value, std::unique_ptr<IRedisCallback> cb = nullptr);
@@ -56,6 +56,7 @@ public:
   void getProtobuf(const std::string& key, google::protobuf::Message& message, std::shared_ptr<IRedisCallback> cb);
   void connect();
   void disconnect();
+  void setDisconnectCallback(std::function<void()> callback);
 
 private:
   struct RedisConnector
@@ -93,6 +94,8 @@ private:
   void handleAuth(redisReply* reply);
   void handlePing(redisReply* reply);
   void handleDisconnect(int status);
+
+  std::function<void()> custom_disconnect_callback;
 };
 
 #endif

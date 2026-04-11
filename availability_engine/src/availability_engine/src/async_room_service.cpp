@@ -1,4 +1,19 @@
 #include "async_room_service.hpp"
+#include <csignal>
+
+namespace {
+    AsyncRoomService* global_service_instance = nullptr;
+
+    void signal_handler(int signal) {
+        LOG_INFO("Signal handler invoked for signal: " + std::to_string(signal));
+        if (global_service_instance) {
+            LOG_INFO("Calling shutdown from signal handler.");
+            global_service_instance->shutdown();
+        } else {
+            LOG_WARN("Global service instance is null in signal handler.");
+        }
+    }
+}
 
 AsyncRoomService::AsyncRoomService(
     std::shared_ptr<RedisAsyncClient> redis_client,
@@ -14,6 +29,9 @@ AsyncRoomService::~AsyncRoomService() {
 }
 
 void AsyncRoomService::start() {
+    global_service_instance = this;
+    std::signal(SIGINT, signal_handler);
+
     try {
         is_running_ = true;
         LOG_INFO("AsyncRoomService started.");

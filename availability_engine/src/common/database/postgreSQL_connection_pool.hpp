@@ -27,6 +27,7 @@ private:
     std::condition_variable m_condition;
 
     friend class PostgreSQLConnectionPoolTest; // Grant access to the test class
+    friend class PostgreSQLAsyncClientTest; // Grant access to the test class
 };
 
 #endif // POSTGRESQL_CONNECTION_POOL_HPP

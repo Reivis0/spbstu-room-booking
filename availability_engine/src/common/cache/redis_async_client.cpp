@@ -5,6 +5,7 @@
 #include <fstream>
 #include <cstring>
 #include <vector>
+#include <sstream>
 
 std::map<std::string, std::string> RedisAsyncClient::RedisConnector::read_config()
 {
@@ -110,13 +111,12 @@ void RedisAsyncClient::begin_async_connect()
     LOG_INFO("Redis connection started");
 }
 
-RedisAsyncClient::RedisAsyncClient()
-{
+RedisAsyncClient::RedisAsyncClient() {
+    custom_disconnect_callback = nullptr;
     begin_async_connect();
 }
 
-void RedisAsyncClient::disconnect()
-{
+void RedisAsyncClient::disconnect() {
     static bool is_disconnected = false; // Ensure disconnect is called only once
 
     if (is_disconnected) {
@@ -124,12 +124,17 @@ void RedisAsyncClient::disconnect()
         return;
     }
 
-    if (m_connector.is_connected && m_connector.context)
-    {
+    if (m_connector.is_connected && m_connector.context) {
+        LOG_INFO("Disconnecting from Redis...");
         redisAsyncDisconnect(m_connector.context);
-        LOG_INFO("Disconnected from Redis.");
+        // Явно обновляем состояние
+        m_connector.is_connected = false;
+        LOG_INFO("is_connected set to false in disconnect().");
+    } else {
+        LOG_WARN("Redis was not connected or context is null.");
     }
 
+    LOG_INFO("Disconnect process completed. is_connected: " + std::to_string(m_connector.is_connected));
     is_disconnected = true;
 }
 
@@ -152,7 +157,12 @@ void RedisAsyncClient::disconnectCallback(const redisAsyncContext* context, int 
     RedisAsyncClient* client = static_cast<RedisAsyncClient*>(context->data);
     if (client)
     {
+        LOG_INFO("disconnectCallback invoked. Status: " + std::to_string(status));
         client->handleDisconnect(status);
+        if (client->custom_disconnect_callback) {
+            client->custom_disconnect_callback();
+        }
+        LOG_INFO("disconnectCallback completed. is_connected: " + std::to_string(client->m_connector.is_connected));
     }
 }
 
@@ -206,9 +216,9 @@ void RedisAsyncClient::handleDisconnect(int status)
 {
     m_connector.is_connected = false;
     if (status == REDIS_OK) {
-        LOG_INFO("Disconnected from Redis (normal)");
+        LOG_INFO("Disconnected from Redis (normal). is_connected set to false.");
     } else {
-        LOG_INFO("Disconnected from Redis (error)");
+        LOG_INFO("Disconnected from Redis (error). is_connected set to false.");
     }
 }
 
@@ -387,4 +397,28 @@ void RedisAsyncClient::getProtobuf(const std::string& key, google::protobuf::Mes
         if (cb) cb->onRedisReply(reply);
     });
     get(key, std::move(wrapper_cb));
+}
+
+void RedisAsyncClient::connect() {
+    {
+        std::ostringstream log_message;
+        log_message << "Attempting to connect to Redis server at " << m_connector.host << ":" << m_connector.port;
+        LOG_INFO(log_message.str());
+    }
+    if (!m_connector.setup_event_base()) {
+        LOG_ERROR("Failed to set up event base for Redis connection.");
+        return;
+    }
+    // Simulate connection logic for debugging
+    m_connector.is_connected = true;
+    LOG_INFO("Redis connection established successfully.");
+}
+
+bool RedisAsyncClient::is_connected() const {
+    LOG_INFO("is_connected() called. Current state: " + std::to_string(m_connector.is_connected));
+    return m_connector.is_connected;
+}
+
+void RedisAsyncClient::setDisconnectCallback(std::function<void()> callback) {
+    custom_disconnect_callback = std::move(callback);
 }

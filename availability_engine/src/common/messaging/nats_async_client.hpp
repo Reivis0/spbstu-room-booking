@@ -42,4 +42,3 @@ private:
 };
 
 #endif // NATS_ASYNC_CLIENT_HPP
-
