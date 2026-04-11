@@ -1,0 +1,34 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/spbstu_room_booking
+    driver-class-name: org.postgresql.Driver
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  redis:
+    host: ${SPRING_REDIS_HOST}
+    port: ${SPRING_REDIS_PORT}
+    password: ${SPRING_REDIS_PASSWORD}
+    timeout: 5000
+
+server:
+  port: 8081
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:supersecret}
+    issuer: architecht-booking-api
+    access-ttl-seconds: 3600
+
+nats:
+  url: ${NATS_URL}
+
+availability-engine:
+  host: ${AVAILABILITY_ENGINE_HOST}
+  port: ${AVAILABILITY_ENGINE_PORT}
