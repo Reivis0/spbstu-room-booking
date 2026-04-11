@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <ctime>
+#include <csignal>
 
 
 std::string get_current_date_string() {
@@ -32,10 +33,25 @@ struct SyncGenericCb : public IGenericCb {
     }
 };
 
+namespace {
+    RuzImporter* global_importer_instance = nullptr;
+
+    void signal_handler(int signal) {
+        LOG_INFO("Signal handler invoked for signal: " + std::to_string(signal));
+        if (global_importer_instance) {
+            LOG_INFO("Calling shutdown from signal handler.");
+            global_importer_instance->shutdown();
+        } else {
+            LOG_WARN("Global importer instance is null in signal handler.");
+        }
+    }
+}
 
 RuzImporter::RuzImporter(std::shared_ptr<PostgreSQLAsyncClient> pg_client,
                          std::shared_ptr<NatsAsyncClient> nats_client)
-    : m_pg_client(pg_client), m_nats_client(nats_client) 
+    : m_pg_client(std::move(pg_client)),
+      m_nats_client(std::move(nats_client)),
+      m_shutdown(false) 
 {
     auto config = load_config();
     
@@ -54,6 +70,60 @@ RuzImporter::~RuzImporter() {
     shutdown();
 }
 
+void RuzImporter::start() {
+    global_importer_instance = this;
+    std::signal(SIGINT, signal_handler);
+
+    try {
+        LOG_INFO("RUZ_Importer: Service initialized. Starting main loop...");
+        m_shutdown = false;
+
+        if (m_pg_client) {
+            LOG_INFO("Connecting to PostgreSQL...");
+        }
+        if (m_nats_client) {
+            LOG_INFO("Connecting to NATS...");
+        }
+
+        main_loop();
+    } catch (const std::exception& e) {
+        LOG_ERROR(std::string("Error in RuzImporter::start: ") + e.what());
+        shutdown();
+    }
+}
+
+void RuzImporter::shutdown() {
+    static bool is_shutdown = false;
+
+    if (is_shutdown) {
+        LOG_WARN("RUZ_Importer shutdown called multiple times.");
+        return;
+    }
+
+    try {
+        LOG_INFO("RUZ_Importer: Shutting down...");
+        m_shutdown = true;
+        LOG_INFO("RUZ_Importer: Notifying all waiting threads...");
+        m_shutdown_cv.notify_all(); // Wake up waiting threads
+        LOG_INFO("RUZ_Importer: Notification sent.");
+
+        if (m_pg_client && m_pg_client->is_connected()) {
+            LOG_INFO("Disconnecting from PostgreSQL...");
+            m_pg_client->disconnect();
+        }
+        if (m_nats_client && m_nats_client->is_connected()) {
+            LOG_INFO("Disconnecting from NATS...");
+            m_nats_client->disconnect();
+        }
+        
+        LOG_INFO("RUZ_Importer: Shutdown completed.");
+    } catch (const std::exception& e) {
+        LOG_ERROR(std::string("Error in RuzImporter::shutdown: ") + e.what());
+    }
+
+    is_shutdown = true;
+}
+
 void RuzImporter::run() {
     LOG_INFO("RUZ_IMPORTER: Entering main loop...");
     std::this_thread::sleep_for(std::chrono::seconds(1)); 
@@ -65,11 +135,6 @@ void RuzImporter::run() {
     main_loop();
 }
 
-void RuzImporter::shutdown() {
-    m_shutdown = true;
-    LOG_INFO("RUZ_IMPORTER: Shutdown requested");
-}
-
 void RuzImporter::main_loop() {
     while (!m_shutdown) {
         import_cycle();
@@ -78,13 +143,20 @@ void RuzImporter::main_loop() {
 }
 
 void RuzImporter::wait_for_next_cycle() {
-    if (m_shutdown) return;
+    if (m_shutdown) {
+        LOG_INFO("RUZ_IMPORTER: Shutdown detected, skipping wait.");
+        return;
+    }
     LOG_INFO("RUZ_IMPORTER: Waiting " + std::to_string(m_import_interval_seconds) + "s...");
     
-    int waited = 0;
-    while (waited < m_import_interval_seconds && !m_shutdown) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        waited++;
+    std::unique_lock<std::mutex> lock(m_shutdown_mutex);
+    bool shutdown_signaled = m_shutdown_cv.wait_for(lock, std::chrono::seconds(m_import_interval_seconds), 
+                           [this]() { return m_shutdown.load(); });
+    
+    if (shutdown_signaled) {
+        LOG_INFO("RUZ_IMPORTER: Shutdown signal received during wait.");
+    } else {
+        LOG_INFO("RUZ_IMPORTER: Wait timeout, resuming cycle.");
     }
 }
 

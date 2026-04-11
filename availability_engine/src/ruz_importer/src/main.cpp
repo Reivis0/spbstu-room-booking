@@ -25,12 +25,16 @@ int main()
     
     LOG_INFO("RUZ_Importer: RUZ Importer Starting");
     
-    auto pg_client = std::make_shared<PostgreSQLAsyncClient>();
+    // Create and initialize PostgreSQL connection pool
+    auto pg_pool = std::make_shared<PostgreSQLConnectionPool>(5);
+    pg_pool->initialize_pool();
+    
+    auto pg_client = std::make_shared<PostgreSQLAsyncClient>(pg_pool);
     auto nats_client = std::make_shared<NatsAsyncClient>();
     g_importer = std::make_unique<RuzImporter>(pg_client, nats_client);
     
     LOG_INFO("RUZ_Importer: Service initialized. Starting main loop...");
-    g_importer->run();
+    g_importer->start();
     
   }
   catch (const std::exception& e)

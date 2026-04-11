@@ -6,6 +6,8 @@
 #include <string>
 #include <atomic>
 #include <map>
+#include <mutex>
+#include <condition_variable>
 #include "database/postgreSQL_async_client.hpp"
 #include "messaging/nats_async_client.hpp"
 #include "lesson.hpp" 
@@ -18,6 +20,7 @@ public:
 
     void run();
     void shutdown();
+    void start();
 
 private:
     void main_loop();
@@ -35,6 +38,9 @@ private:
     std::shared_ptr<NatsAsyncClient> m_nats_client;
     
     std::atomic<bool> m_shutdown{false};
+    std::mutex m_shutdown_mutex;
+    std::condition_variable m_shutdown_cv;
+    
     std::string m_api_url;
     int m_import_interval_seconds{1800};
     int m_retry_attempts{3};

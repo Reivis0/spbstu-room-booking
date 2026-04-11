@@ -17,9 +17,9 @@ public:
 
     std::shared_ptr<PostgreSQLAsyncClient> acquire();
     void release(std::shared_ptr<PostgreSQLAsyncClient> connection);
+    void initialize_pool();
 
 private:
-    void initialize_pool();
 
     size_t m_pool_size;
     std::queue<std::shared_ptr<PostgreSQLAsyncClient>> m_pool;
