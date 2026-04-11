@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream:src/availability_engine/src/async_room_service.cpp
 #include <async_room_service.hpp>
 #include "logger.hpp"
 #include <exception>
@@ -490,70 +491,73 @@ void AsyncRoomService::OcupiedIntervalsCallData::CompleteRequest()
   m_status = FINISH;
   m_responder.Finish(m_response, grpc::Status::OK, this);
 }
+=======
+#include "async_room_service.hpp"
+>>>>>>> Stashed changes:availability_engine/src/availability_engine/src/async_room_service.cpp
 
 AsyncRoomService::AsyncRoomService(
-  std::shared_ptr<RedisAsyncClient> redis_client,
+    std::shared_ptr<RedisAsyncClient> redis_client,
     std::shared_ptr<PostgreSQLAsyncClient> pg_client,
-    std::shared_ptr<NatsAsyncClient> nats_client
-) : m_redis_client(redis_client), m_pg_client(pg_client), m_nats_client(nats_client) 
-{
-  if (m_redis_client) {
-    m_redis_thread = std::thread([this]()
-    {
-        LOG_INFO("Starting Redis event loop...");
-        m_redis_client->run_event_loop();
-        LOG_INFO("Redis event loop finished");
-    });
-    m_redis_thread.detach();
-}
+    std::shared_ptr<NatsAsyncClient> nats_client)
+    : redis_client_(std::move(redis_client)),
+      pg_client_(std::move(pg_client)),
+      nats_client_(std::move(nats_client)),
+      is_running_(false) {}
+
+AsyncRoomService::~AsyncRoomService() {
+    shutdown();
 }
 
-AsyncRoomService::~AsyncRoomService()
-{
-  shutdown();
-  if (m_redis_client)
-  {
-    m_redis_client->stop_event_loop();
-    m_pg_client->stop();
-  }
-}
-
-void AsyncRoomService::start()
-{
-  std::string adress ("0.0.0.0:50051");
-  grpc::ServerBuilder builder;
-
-  builder.AddListeningPort(adress, grpc::InsecureServerCredentials());
-  builder.RegisterService(&m_service);
-  m_cq = builder.AddCompletionQueue();
-  m_server = builder.BuildAndStart();
-
-  new ComputeIntervalsCallData(&m_service, m_cq.get(), this);
-  new ValidateCallData(&m_service, m_cq.get(), this);
-  new OcupiedIntervalsCallData(&m_service, m_cq.get(), this);
-
-  void* tag;
-  bool ok;
-  while(!m_shutdown && m_cq->Next(&tag, &ok))
-  {
-    if(ok)
-    {
-      auto call_data = static_cast<CallData*>(tag);
-      call_data->Proceed();
+void AsyncRoomService::start() {
+    try {
+        is_running_ = true;
+        LOG_INFO("AsyncRoomService started.");
+        
+        if (pg_client_) {
+            LOG_INFO("Connecting to PostgreSQL...");
+        }
+        if (redis_client_) {
+            LOG_INFO("Connecting to Redis...");
+        }
+        if (nats_client_) {
+            LOG_INFO("Connecting to NATS...");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(std::string("Error in AsyncRoomService::start: ") + e.what());
+        shutdown();
     }
-  }
 }
 
-void AsyncRoomService::shutdown()
-{
-  m_shutdown = true;
+void AsyncRoomService::shutdown() {
+    static bool is_shutdown = false; // Ensure shutdown is called only once
 
-  if (m_server)
-  {
-    m_server->Shutdown();
-  }
-  if(m_cq)
-  {
-    m_cq->Shutdown();
-  }
+    if (is_shutdown) {
+        LOG_WARN("AsyncRoomService shutdown called multiple times.");
+        return;
+    }
+
+    if (is_running_) {
+        try {
+            is_running_ = false;
+            LOG_INFO("AsyncRoomService shutting down.");
+
+            if (pg_client_ && pg_client_->is_connected()) {
+                LOG_INFO("Disconnecting from PostgreSQL...");
+                pg_client_->disconnect();
+            }
+            if (redis_client_ && redis_client_->is_connected()) {
+                LOG_INFO("Disconnecting from Redis...");
+                redis_client_->disconnect();
+            }
+            if (nats_client_ && nats_client_->is_connected()) {
+                LOG_INFO("Disconnecting from NATS...");
+                nats_client_->disconnect();
+            }
+        } catch (const std::exception& e) {
+            LOG_ERROR(std::string("Error in AsyncRoomService::shutdown: ") + e.what());
+        }
+    }
+
+    is_shutdown = true;
 }
+

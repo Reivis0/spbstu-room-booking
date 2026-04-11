@@ -2,7 +2,6 @@
 #define LOGGER_HPP
 
 #include <string>
-#include <fstream>
 #include <mutex>
 #include <ctime>
 #include <sstream>
@@ -20,28 +19,26 @@ enum class LogLevel
 class Logger
 {
 public:
-    Logger(const Logger&) = delete;
-    Logger& operator=(const Logger&) = delete;
+  Logger(const Logger&) = delete;
+  Logger& operator=(const Logger&) = delete;
 
-    static Logger& getInstance()
-    {
-        static Logger instance;
-        return instance;
-    }
+  static Logger& getInstance()
+  {
+    static Logger instance;
+    return instance;
+  }
 
-    void init(const std::string& filename = "logs.log");
-
-    void log(LogLevel level, const std::string& message);
+  void init() {};
+  void log(LogLevel level, const std::string& message);
 
 private:
-    Logger() = default;
-    ~Logger();
+  Logger() = default;
+  ~Logger() {};
 
-    std::string getTimestamp();
-    std::string levelToString(LogLevel level);
+  std::string getTimestamp();
+  std::string levelToString(LogLevel level);
 
-    std::ofstream m_file;
-    std::mutex m_mutex;
+  std::mutex m_mutex;
 };
 
 #define LOG_DEBUG(msg) Logger::getInstance().log(LogLevel::DEBUG, msg)

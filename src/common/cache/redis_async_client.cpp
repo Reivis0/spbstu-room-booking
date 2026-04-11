@@ -1,8 +1,10 @@
 #include "redis_async_client.hpp"
+#include "logger.hpp"
 
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <vector>
 
 std::map<std::string, std::string> RedisAsyncClient::RedisConnector::read_config()
 {
@@ -115,10 +117,20 @@ RedisAsyncClient::RedisAsyncClient()
 
 void RedisAsyncClient::disconnect()
 {
+    static bool is_disconnected = false; // Ensure disconnect is called only once
+
+    if (is_disconnected) {
+        LOG_WARN("Redis disconnect called multiple times.");
+        return;
+    }
+
     if (m_connector.is_connected && m_connector.context)
     {
         redisAsyncDisconnect(m_connector.context);
+        LOG_INFO("Disconnected from Redis.");
     }
+
+    is_disconnected = true;
 }
 
 RedisAsyncClient::~RedisAsyncClient()
@@ -269,41 +281,110 @@ void RedisAsyncClient::stop_event_loop()
         LOG_INFO("Calling event_base_loopbreak...");
         event_base_loopexit(m_connector.ev_base, nullptr);
     }
+
+    std::vector<std::unique_ptr<IRedisCallback>> to_invoke;
+    {
+        std::lock_guard<std::mutex> lock(m_pending_mutex);
+        to_invoke.reserve(m_pending_callbacks.size());
+        for (auto &kv : m_pending_callbacks) {
+            to_invoke.emplace_back(std::move(kv.second));
+        }
+        m_pending_callbacks.clear();
+    }
+    for (auto &cb : to_invoke) {
+        try { cb->onRedisReply(nullptr); } catch(...) {}
+    }
 }
 
 void RedisAsyncClient::genericCallback(redisAsyncContext* context, void* reply, void* privdata)
 {
-    IRedisCallback* cb = static_cast<IRedisCallback*>(privdata);
-    if(cb)
-    {
-        cb->onRedisReply(static_cast<redisReply*>(reply));
+    RedisAsyncClient* client = nullptr;
+    if (context) client = static_cast<RedisAsyncClient*>(context->data);
+    IRedisCallback* raw = static_cast<IRedisCallback*>(privdata);
+    std::unique_ptr<IRedisCallback> cbptr;
+    if (client && raw) {
+        std::lock_guard<std::mutex> lock(client->m_pending_mutex);
+        auto it = client->m_pending_callbacks.find(raw);
+        if (it != client->m_pending_callbacks.end()) {
+            cbptr = std::move(it->second);
+            client->m_pending_callbacks.erase(it);
+        }
+    }
+    if (!cbptr && raw) {
+        cbptr.reset(raw);
+    }
+    if (cbptr) {
+        try {
+            cbptr->onRedisReply(static_cast<redisReply*>(reply));
+        } catch (...) {
+            LOG_ERROR("Exception in Redis callback");
+        }
     }
 }
 
-void RedisAsyncClient::get(const std::string& key, IRedisCallback* cb)
+void RedisAsyncClient::get(const std::string& key, std::unique_ptr<IRedisCallback> cb)
 {
     if(!is_connected() || !cb)
     {
         if(cb)
         {
-            cb->onRedisReply(nullptr);
-            delete cb;
+            try { cb->onRedisReply(nullptr); } catch(...) {}
         }
         return;
     }
-    redisAsyncCommand(m_connector.context, genericCallback, cb,"GET %s", key.c_str());
+    IRedisCallback* raw = cb.get();
+    {
+        std::lock_guard<std::mutex> lock(m_pending_mutex);
+        m_pending_callbacks.emplace(raw, std::move(cb));
+    }
+    redisAsyncCommand(m_connector.context, genericCallback, raw, "GET %s", key.c_str());
 }
 
-void RedisAsyncClient::setex(const std::string& key, int ttl_seconds, const std::string& value, IRedisCallback* cb)
+void RedisAsyncClient::setex(const std::string& key, int ttl_seconds, const std::string& value, std::unique_ptr<IRedisCallback> cb)
 {
     if(!is_connected())
     {
         if(cb)
         {
-            cb->onRedisReply(nullptr);
-            delete cb;
+            try { cb->onRedisReply(nullptr); } catch(...) {}
         }
         return;
     }
-    redisAsyncCommand(m_connector.context, cb ? genericCallback : nullptr, cb, "SETEX %s %d %s", key.c_str(), ttl_seconds, value.c_str());
+    if (!cb) {
+        redisAsyncCommand(m_connector.context, nullptr, nullptr, "SETEX %s %d %s", key.c_str(), ttl_seconds, value.c_str());
+        return;
+    }
+    IRedisCallback* raw = cb.get();
+    {
+        std::lock_guard<std::mutex> lock(m_pending_mutex);
+        m_pending_callbacks.emplace(raw, std::move(cb));
+    }
+    redisAsyncCommand(m_connector.context, genericCallback, raw, "SETEX %s %d %s", key.c_str(), ttl_seconds, value.c_str());
+}
+
+void RedisAsyncClient::setProtobuf(const std::string& key, int ttl_seconds, const google::protobuf::Message& message, std::unique_ptr<IRedisCallback> cb) {
+    std::string serialized_data;
+    if (!message.SerializeToString(&serialized_data)) {
+        LOG_ERROR("Failed to serialize protobuf message");
+        if (cb) cb->onRedisReply(nullptr);
+        return;
+    }
+    setex(key, ttl_seconds, serialized_data, std::move(cb));
+}
+
+void RedisAsyncClient::getProtobuf(const std::string& key, google::protobuf::Message& message, std::shared_ptr<IRedisCallback> cb) {
+    auto wrapper_cb = std::make_unique<RedisCallbackImpl>([&message, cb](redisReply* reply) {
+        if (!reply || reply->type != REDIS_REPLY_STRING) {
+            LOG_ERROR("Failed to retrieve protobuf data from Redis");
+            if (cb) cb->onRedisReply(reply);
+            return;
+        }
+        if (!message.ParseFromString(reply->str)) {
+            LOG_ERROR("Failed to deserialize protobuf message");
+            if (cb) cb->onRedisReply(reply);
+            return;
+        }
+        if (cb) cb->onRedisReply(reply);
+    });
+    get(key, std::move(wrapper_cb));
 }

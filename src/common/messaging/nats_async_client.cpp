@@ -57,19 +57,21 @@ NatsAsyncClient::NatsAsyncClient()
         m_nats_connect.m_client_port = 4222;
     }
 
+    // Construct m_url using host and port
     m_url = "nats://" + m_nats_connect.m_host + ":" + std::to_string(m_nats_connect.m_client_port);
-    
+
+    // Log the constructed URL
+    LOG_INFO("Constructed NATS URL: " + m_url);
+
     connect();
 }
 
 NatsAsyncClient::~NatsAsyncClient()
 {
-    if (m_conn)
-    {
-        natsConnection_Destroy(m_conn);
-    }
+    disconnect();
     if (m_opts) {
         natsOptions_Destroy(m_opts);
+        m_opts = nullptr;
     }
 }
 
@@ -83,6 +85,7 @@ std::string NatsAsyncClient::trim(const std::string& str)
 
 void NatsAsyncClient::connect()
 {
+    std::lock_guard<std::mutex> lock(m_conn_mutex);
     natsStatus s = natsOptions_Create(&m_opts);
     if (s == NATS_OK)
     {
@@ -97,8 +100,27 @@ void NatsAsyncClient::connect()
     }
 }
 
+void NatsAsyncClient::disconnect() {
+    static bool is_disconnected = false; // Ensure disconnect is called only once
+
+    if (is_disconnected) {
+        LOG_WARN("NATS disconnect called multiple times.");
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(m_conn_mutex);
+    if (m_conn) {
+        natsConnection_Destroy(m_conn);
+        m_conn = nullptr;
+        LOG_INFO("Disconnected from NATS.");
+    }
+
+    is_disconnected = true;
+}
+
 void NatsAsyncClient::publish(const std::string& subject, const std::string& data)
 {
+    std::lock_guard<std::mutex> lock(m_conn_mutex);
     if (!m_conn) return;
 
     natsStatus s = natsConnection_Publish(m_conn, subject.c_str(), data.c_str(), data.size());
@@ -111,4 +133,9 @@ void NatsAsyncClient::publishScheduleRefreshed(const std::string& room_id, const
 {
     std::string payload = "{ \"event\": \"schedule_refreshed\", \"room_id\": \"" + room_id + "\", \"date\": \"" + date + "\" }";
     publish("events.schedule_refreshed", payload);
+}
+
+bool NatsAsyncClient::is_connected() const {
+    std::lock_guard<std::mutex> lock(m_conn_mutex);
+    return m_conn != nullptr; // Проверяем, установлено ли соединение
 }

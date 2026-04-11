@@ -5,6 +5,7 @@ project(common)
 add_library(common_lib STATIC
     cache/redis_async_client.cpp
     database/postgreSQL_async_client.cpp
+    database/postgreSQL_connection_pool.cpp
     messaging/nats_async_client.cpp
 )
 
@@ -17,18 +18,18 @@ target_include_directories(common_lib PUBLIC
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(REDIS REQUIRED hiredis)
-pkg_check_modules(POSTGRESQL REQUIRED libpq)
+find_package(PostgreSQL REQUIRED)
 
 target_include_directories(common_lib PRIVATE
     ${REDIS_INCLUDE_DIRS}
-    ${POSTGRESQL_INCLUDE_DIRS}
+    ${PostgreSQL_INCLUDE_DIRS}
 )
 
 target_link_libraries(common_lib PUBLIC
     protos_lib
     logger_lib
     ${REDIS_LIBRARIES}
-    ${POSTGRESQL_LIBRARIES}
+    PostgreSQL::PostgreSQL
     nats_static 
     Threads::Threads
     dl

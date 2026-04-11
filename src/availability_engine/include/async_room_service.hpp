@@ -27,16 +27,14 @@ public:
   ~AsyncRoomService();
   void start();
   void shutdown();
+  bool isRunning() const { return is_running_; }
 
-//CallData
 private:
   class CallData
   {
   public:
     virtual ~CallData() = default;
     virtual void Proceed() = 0;
-
-
   };
   
   class ComputeIntervalsCallData : public CallData
@@ -60,7 +58,7 @@ private:
       enum CallStatus {CREATE, PROCESS, FINISH};
       CallStatus m_status;
 
-      bool m_done {false};
+      std::atomic<bool> m_done {false};
   };
   
   class ValidateCallData : public CallData
@@ -83,7 +81,7 @@ private:
       enum CallStatus {CREATE, PROCESS, FINISH};
       CallStatus m_status;
 
-      bool m_done {false};
+      std::atomic<bool> m_done {false};
 
       struct ValidateData
       {
@@ -125,14 +123,12 @@ private:
       enum CallStatus {CREATE, PROCESS, FINISH};
       CallStatus m_status;
         
-      bool m_done {false};
+      std::atomic<bool> m_done {false};
   };
 
-//методы
 private:
 
 
-//поля 
 private:
   room_service::RoomService::AsyncService m_service;
   std::unique_ptr<grpc::ServerCompletionQueue> m_cq;
@@ -144,5 +140,10 @@ private:
   std::shared_ptr<PostgreSQLAsyncClient> m_pg_client;
   std::shared_ptr<NatsAsyncClient> m_nats_client;
 
+  private:
+    std::shared_ptr<RedisAsyncClient> redis_client_;
+    std::shared_ptr<PostgreSQLAsyncClient> pg_client_;
+    std::shared_ptr<NatsAsyncClient> nats_client_;
+    std::atomic<bool> is_running_;
 };
 #endif

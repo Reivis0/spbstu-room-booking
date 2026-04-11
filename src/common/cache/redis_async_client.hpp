@@ -12,12 +12,32 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <google/protobuf/message.h>
+#include <functional>
 
 class IRedisCallback
 {
 public:
   virtual ~IRedisCallback() = default;
   virtual void onRedisReply(redisReply* reply) = 0;
+};
+
+class RedisCallbackImpl : public IRedisCallback {
+public:
+    explicit RedisCallbackImpl(const std::function<void(redisReply*)>& callback)
+        : callback_(callback) {}
+
+    void onRedisReply(redisReply* reply) override {
+        if (callback_) {
+            callback_(reply);
+        }
+    }
+
+private:
+    std::function<void(redisReply*)> callback_;
 };
 
 class RedisAsyncClient
@@ -30,8 +50,12 @@ public:
   void stop_event_loop();
   bool is_connected() const { return m_connector.is_connected; }
 
-  void get(const std::string& key, IRedisCallback* cb);
-  void setex(const std::string& key, int ttl_seconds, const std::string& value, IRedisCallback* cb = nullptr);
+  void get(const std::string& key, std::unique_ptr<IRedisCallback> cb);
+  void setex(const std::string& key, int ttl_seconds, const std::string& value, std::unique_ptr<IRedisCallback> cb = nullptr);
+  void setProtobuf(const std::string& key, int ttl_seconds, const google::protobuf::Message& message, std::unique_ptr<IRedisCallback> cb = nullptr);
+  void getProtobuf(const std::string& key, google::protobuf::Message& message, std::shared_ptr<IRedisCallback> cb);
+  void connect();
+  void disconnect();
 
 private:
   struct RedisConnector
@@ -45,7 +69,7 @@ private:
     int port;
     std::string password;
     int connection_timeout;
-    bool is_connected;
+    std::atomic<bool> is_connected{false};
     std::string error_msg;
 
     std::map<std::string, std::string> read_config();
@@ -53,9 +77,10 @@ private:
   };
 
   RedisConnector m_connector;
+  std::mutex m_pending_mutex;
+  std::unordered_map<IRedisCallback*, std::unique_ptr<IRedisCallback>> m_pending_callbacks;
   
   void begin_async_connect();
-  void disconnect();
   
   static void connectCallback(const redisAsyncContext* context, int status);
   static void authCallback(redisAsyncContext* context, void* reply, void* privdata);

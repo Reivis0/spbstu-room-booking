@@ -4,6 +4,7 @@
 #include <logger.hpp>
 #include <nats/nats.h>
 #include <string>
+#include <mutex>
 #include <functional>
 #include <memory>
 #include <iostream>
@@ -18,8 +19,10 @@ public:
     ~NatsAsyncClient();
 
     void connect();
+    void disconnect();
     void publish(const std::string& subject, const std::string& data);
     void publishScheduleRefreshed(const std::string& room_id, const std::string& date);
+    bool is_connected() const;
 
 private:
     struct NatsConnection
@@ -34,6 +37,9 @@ private:
     std::string m_url;
     natsConnection* m_conn = nullptr;
     natsOptions* m_opts = nullptr;
+    mutable std::mutex m_conn_mutex;
+    bool m_running = true; // Flag to indicate if the client is running
 };
 
 #endif // NATS_ASYNC_CLIENT_HPP
+
