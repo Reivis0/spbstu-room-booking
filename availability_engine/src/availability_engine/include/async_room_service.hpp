@@ -126,6 +126,46 @@ private:
       std::atomic<bool> m_done {false};
   };
 
+  class FindRoomChainCallData : public CallData
+  {
+    public:
+    FindRoomChainCallData(room_service::RoomService::AsyncService* service, grpc::ServerCompletionQueue* cq, AsyncRoomService* room_service);
+    void Proceed() override;
+    void ProcessRequest();
+    void CompleteRequest();
+    void ProcessWithDataBase();
+
+    private:
+      room_service::RoomService::AsyncService* m_service;
+      grpc::ServerCompletionQueue* m_cq;
+      grpc::ServerContext m_ctx;
+      AsyncRoomService*  m_room_service;
+      room_service::FindRoomChainRequest m_request;
+      room_service::FindRoomChainResponse m_response;
+      grpc::ServerAsyncResponseWriter<room_service::FindRoomChainResponse> m_responder;
+      enum CallStatus {CREATE, PROCESS, FINISH};
+      CallStatus m_status;
+        
+      std::atomic<bool> m_done {false};
+
+      struct RoomSlot
+      {
+        std::string room_id;
+        std::string start_time;
+        std::string end_time;
+      };
+
+      // Вспомогательные методы для алгоритма поиска цепи
+      std::vector<RoomSlot> findRoomChain(
+        const std::string& date,
+        const std::string& start_time,
+        const std::string& end_time,
+        const std::string& building_id
+      );
+      int toMinutes(const std::string& time);
+      std::string fromMinutes(int minutes);
+  };
+
 private:
 
 
