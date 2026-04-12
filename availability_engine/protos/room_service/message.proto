@@ -72,9 +72,20 @@ message OcupiedIntervalsResponce
   repeated Interval intervals = 1;
 }
 
+message FindRoomChainRequest
+{
+  string duration = 1;
+}
+
+message FindRoomChainResponce
+{
+  repeated string room_id = 1;
+}
+
 service RoomService
 {
   rpc ComputeIntervals(ComputeIntervalsRequest) returns (ComputeIntervalsResponse);
   rpc Validate(ValidateRequest) returns (ValidateResponse);
   rpc OcupiedIntervals(OcupiedIntervalsRequest) returns (OcupiedIntervalsResponce);
+  rpc FindRoomChain(FindRoomChainRequest) returns (FindRoomChainResponce);
 }
