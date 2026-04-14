@@ -7,10 +7,12 @@ add_library(common_lib STATIC
     database/postgreSQL_async_client.cpp
     database/postgreSQL_connection_pool.cpp
     messaging/nats_async_client.cpp
+    metrics/MetricsRegistry.cpp
 )
 
 target_include_directories(common_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/metrics
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/genproto
 )
@@ -33,6 +35,8 @@ target_link_libraries(common_lib PUBLIC
     nats_static 
     Threads::Threads
     dl
+    prometheus-cpp::pull
+    prometheus-cpp::core
 )
 
 set_target_properties(common_lib PROPERTIES

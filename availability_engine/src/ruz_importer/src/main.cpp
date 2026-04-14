@@ -16,6 +16,10 @@ void signalHandler(int signal)
 
 int main()
 {
+  std::cout.setf(std::ios::unitbuf);
+  std::cerr.setf(std::ios::unitbuf);
+  std::setvbuf(stdout, NULL, _IONBF, 0);
+  std::setvbuf(stderr, NULL, _IONBF, 0);
   signal(SIGINT, signalHandler);
   signal(SIGTERM, signalHandler);
   

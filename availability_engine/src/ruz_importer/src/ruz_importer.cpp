@@ -229,7 +229,7 @@ bool RuzImporter::fetch_and_process() {
     for (const auto& [room_code, room_uuid] : m_room_name_to_id) {
         if (m_shutdown) break;
 
-        std::string url = m_api_url + "/" + room_code + "?date=" + current_date;
+        std::string url = m_api_url + "/auditory/" + room_code + "?date=" + current_date;
 
         std::string json = http.fetch_ruz_data(url);
         

@@ -1,5 +1,7 @@
 #include "logger.hpp"
-
+#include <ctime>
+#include <iomanip>
+#include <iostream>
 
 void Logger::log(LogLevel level, const std::string& message)
 {
@@ -8,7 +10,8 @@ void Logger::log(LogLevel level, const std::string& message)
     std::string timestamp = getTimestamp();
     std::string levelStr = levelToString(level);
     
-    std::cout<<"[" << timestamp << "] [" << levelStr << "] " << message << "\n";
+
+    std::cout << "[" << timestamp << "] [" << levelStr << "] " << message << std::endl;
 }
 
 std::string Logger::getTimestamp()
