@@ -4,7 +4,10 @@ WORKDIR /app
 
 COPY package.json package-lock.json* ./
 
-RUN npm install
+# Use cache mount for npm and install dependencies
+# Note: switched from 'ci' to 'install' because lockfile is out of sync
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --no-audit
 
 COPY . .
 

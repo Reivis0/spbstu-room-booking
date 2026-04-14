@@ -4,6 +4,8 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${DB_USER}
     password: ${DB_PASSWORD}
+    hikari:
+      pool-name: bookingApiPool
   jpa:
     hibernate:
       ddl-auto: none
@@ -57,7 +59,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: prometheus,health,info,metrics
   endpoint:
     health:
       show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: booking-api

@@ -1,5 +1,6 @@
 #include "async_room_service.hpp"
 #include "logger.hpp"
+#include "MetricsRegistry.h"
 #include <iostream>
 #include <signal.h>
 
@@ -22,6 +23,7 @@ int main()
     try
     {
         Logger::getInstance().init();
+        MetricsRegistry::instance().start("0.0.0.0:8082");
 
         auto redis_client = std::make_shared<RedisAsyncClient>();
         auto pg_client = std::make_shared<PostgreSQLAsyncClient>();

@@ -1,21 +1,21 @@
 FROM nats:2.11-alpine
 
-RUN apk add --no-cache curl bash wget
-
+# Copy NATS CLI for stream initialization from nats-box
+# This is a static binary, it doesn't need extra libs
 COPY --from=natsio/nats-box:latest /usr/local/bin/nats /usr/local/bin/nats
 
+# Copy configuration and scripts
+COPY nats.conf /etc/nats/nats.conf
 COPY init_streams.sh /usr/local/bin/init_streams.sh
 RUN chmod +x /usr/local/bin/init_streams.sh
 
-RUN mkdir -p /data/jetstream
+# Ensure data directory exists and is world-writable
+RUN mkdir -p /data/jetstream && chmod -R 777 /data
 
 EXPOSE 4222 8222 6222
 
-# Create a proper wrapper script to ensure signals are passed
-RUN echo '#!/bin/sh' > /usr/local/bin/entrypoint.sh && \
-    echo 'nats-server -c /etc/nats/nats.conf & NATS_PID=$!' >> /usr/local/bin/entrypoint.sh && \
-    echo 'sleep 5 && /usr/local/bin/init_streams.sh &' >> /usr/local/bin/entrypoint.sh && \
-    echo 'wait $NATS_PID' >> /usr/local/bin/entrypoint.sh && \
-    chmod +x /usr/local/bin/entrypoint.sh
+# Copy the proper entrypoint script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-CMD ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
