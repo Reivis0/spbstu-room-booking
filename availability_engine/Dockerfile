@@ -1,8 +1,9 @@
-FROM ubuntu:22.04 AS build
+# Phase 1: Environment and external dependencies
+FROM ubuntu:22.04 AS deps
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     git \
@@ -22,25 +23,44 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libjsoncpp-dev \
     libgtest-dev \
-    libgmock-dev
+    libgmock-dev \
+    ccache \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /tmp
-RUN git clone --depth 1 https://github.com/nats-io/nats.c.git && \
-    cd nats.c && \
+# Build nats.c only once
+WORKDIR /tmp/nats
+RUN git clone --depth 1 https://github.com/nats-io/nats.c.git . && \
     cmake . -DNATS_BUILD_WITH_TLS=ON -DNATS_BUILD_STREAMING=OFF && \
     make -j$(nproc) && \
     make install && \
     ldconfig
 
+# Phase 2: Application Build
+FROM deps AS build
 WORKDIR /app
+
+# Copy CMake files first to cache dependencies (if any)
+COPY CMakeLists.txt .
+COPY src/CMakeLists.txt src/
+COPY src/availability_engine/CMakeLists.txt src/availability_engine/
+COPY src/common/CMakeLists.txt src/common/
+COPY src/ruz_importer/CMakeLists.txt src/ruz_importer/
+COPY log/CMakeLists.txt log/
+COPY protos/CMakeLists.txt protos/
+COPY tests/CMakeLists.txt tests/
+
+# Now copy the source code
 COPY . .
 
-RUN mkdir -p build && cd build && \
+# Use BuildKit cache for compilation (ccache)
+ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache
+RUN --mount=type=cache,target=/root/.ccache \
+    mkdir -p build && cd build && \
     cmake .. && \
-    make -j$(nproc) VERBOSE=1
+    make -j$(nproc)
 
+# Phase 3: Runtime image
 FROM ubuntu:22.04
-
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -56,45 +76,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjsoncpp25 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /usr/local/lib/libnats* /usr/lib/
-
 WORKDIR /app
+
+COPY --from=deps /usr/local/lib/libnats* /usr/lib/
 COPY --from=build /app/build/bin/availability_engine .
 
 RUN mkdir configs
 
-RUN echo '#!/bin/bash\n\
+# Clean entrypoint setup
+RUN printf '#!/bin/bash\n\
 set -e\n\
-\n\
+mkdir -p configs\n\
 cat > configs/pg_config.ini << EOF\n\
-[booking_service]\n\
-host=${POSTGRES_HOST:-localhost}\n\
-port=${POSTGRES_PORT:-5432}\n\
-database_name=${POSTGRES_DB:-booking_mvp_db}\n\
-username=${POSTGRES_USER:-postgres}\n\
-password=${POSTGRES_PASSWORD:-password}\n\
-EOF\n\
-\n\
+[booking_service]\nhost=${POSTGRES_HOST:-localhost}\nport=${POSTGRES_PORT:-5432}\ndatabase_name=${POSTGRES_DB:-booking_mvp_db}\nusername=${POSTGRES_USER:-postgres}\npassword=${POSTGRES_PASSWORD:-password}\nEOF\n\
 cat > configs/redis_config.ini << EOF\n\
-[booking_service]\n\
-host=${REDIS_HOST:-localhost}\n\
-port=${REDIS_PORT:-6379}\n\
-password=${REDIS_PASSWORD:-password}\n\
-connection_timeout=${REDIS_TIMEOUT:-5000}\n\
-EOF\n\
-\n\
+[booking_service]\nhost=${REDIS_HOST:-localhost}\nport=${REDIS_PORT:-6379}\npassword=${REDIS_PASSWORD:-password}\nconnection_timeout=${REDIS_TIMEOUT:-5000}\nEOF\n\
 cat > configs/nats_config.ini << EOF\n\
-[booking_service]\n\
-host=${NATS_HOST:-localhost}\n\
-client_port=${NATS_PORT:-4222}\n\
-EOF\n\
-\n\
-exec ./availability_engine "$@"\n\
-' > entrypoint.sh && chmod +x entrypoint.sh
+[booking_service]\nhost=${NATS_HOST:-localhost}\nclient_port=${NATS_PORT:-4222}\nEOF\n\
+exec ./availability_engine "$@"\n' > entrypoint.sh && chmod +x entrypoint.sh
 
 EXPOSE 50051
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD nc -z localhost 50051 || exit 1
 
-CMD ["./entrypoint.sh"]
+ENTRYPOINT ["./entrypoint.sh"]

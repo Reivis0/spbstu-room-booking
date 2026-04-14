@@ -62,9 +62,9 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     logging:
       driver: "json-file"
       options:
@@ -82,6 +82,9 @@ services:
       - "127.0.0.1:${NATS_CLUSTER_PORT}:6222"
     volumes:
       - nats_data:/data
+    # Cache for BuildKit
+    tmpfs:
+      - /tmp
     deploy:
       resources:
         limits:
@@ -104,7 +107,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    command: ["-js", "-sd", "/data", "-m", "8222"]
     stop_signal: SIGTERM
     stop_grace_period: 180s
 
@@ -113,12 +115,13 @@ services:
       context: ./booking_API
       dockerfile: Dockerfile
     container_name: booking-api
+    # Persist Maven cache between builds
+    volumes:
+      - maven_cache:/root/.m2
     ports:
       - "127.0.0.1:8081:8081"
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?stringtype=unspecified
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_APP_USER: ${POSTGRES_USER}
@@ -163,6 +166,8 @@ services:
       context: ./availability_engine
       dockerfile: Dockerfile
     container_name: availability-engine
+    volumes:
+      - ccache_data:/root/.ccache
     ports:
       - "127.0.0.1:50051:50051"
     environment:
@@ -202,12 +207,17 @@ services:
       args:
         REACT_APP_API_URL: /api/v1
     container_name: booking-frontend
+    volumes:
+      - npm_cache:/root/.npm
     ports:
       - "3000:80"
     environment:
       - TZ=${TZ}
     networks:
       - booking-net
+    depends_on:
+      booking_api:
+        condition: service_healthy
     restart: unless-stopped
 
   migrate:
@@ -298,6 +308,12 @@ volumes:
   grafana_data:
     driver: local
   prometheus_data:
+    driver: local
+  maven_cache:
+    driver: local
+  ccache_data:
+    driver: local
+  npm_cache:
     driver: local
 
 networks:

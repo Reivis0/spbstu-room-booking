@@ -185,6 +185,13 @@
 	</dependencies>
 
 	<build>
+		<extensions>
+			<extension>
+				<groupId>kr.motd.maven</groupId>
+				<artifactId>os-maven-plugin</artifactId>
+				<version>1.7.1</version>
+			</extension>
+		</extensions>
 		<plugins>
 			<!-- Spring Boot Maven -->
 			<plugin>
@@ -198,9 +205,9 @@
 				<artifactId>protobuf-maven-plugin</artifactId>
 				<version>0.6.1</version>
 				<configuration>
-					<protocExecutable>${protoc.path}</protocExecutable>
+					<protocArtifact>com.google.protobuf:protoc:3.25.1:exe:${os.detected.classifier}</protocArtifact>
 					<pluginId>grpc-java</pluginId>
-					<pluginArtifact>io.grpc:protoc-gen-grpc-java:1.59.0:exe:linux-x86_64</pluginArtifact>
+					<pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
 				</configuration>
 				<executions>
 					<execution>
