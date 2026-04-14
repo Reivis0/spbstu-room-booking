@@ -37,6 +37,8 @@ target_link_libraries(ruz_importer PRIVATE
     ${JSONCPP_LIBRARIES}
     ${POSTGRESQL_LIBRARIES}
     Threads::Threads
+    ssl
+    crypto
     dl
 )
 

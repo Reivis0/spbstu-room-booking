@@ -30,19 +30,11 @@ RUN mkdir -p /root/.m2 && cat > /root/.m2/settings.xml <<'EOF'
 </settings>
 EOF
 
-RUN --mount=type=cache,target=/root/.m2 \
-    for i in 1 2 3 4 5; do \
-      mvn dependency:go-offline -B && break || \
-      (echo "Retry $i/5..." && sleep 10); \
-    done
+RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -B
 
 # Step 2: Compile (only re-runs if src/ changes)
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 \
-    for i in 1 2 3 4 5; do \
-      mvn package -DskipTests -B && break || \
-      (echo "Retry $i/5..." && sleep 10); \
-    done
+RUN --mount=type=cache,target=/root/.m2 mvn package -DskipTests -B
 
 # Stage 2: Runtime
 FROM eclipse-temurin:17-jre-jammy
@@ -54,7 +46,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 # Use specific JAR name or wildcard, but ensure we only get the main artifact
-COPY --from=build /app/target/*.jar app.jar
+COPY --from=build /app/target/booking_mvp-*.jar app.jar
 
 EXPOSE 8081
 

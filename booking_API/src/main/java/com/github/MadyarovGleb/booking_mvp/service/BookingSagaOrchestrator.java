@@ -1,6 +1,7 @@
 package com.github.MadyarovGleb.booking_mvp.service;
 
 import com.github.MadyarovGleb.booking_mvp.dto.CreateBookingRequest;
+import com.github.MadyarovGleb.booking_mvp.exception.BookingConflictException;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking.BookingStatus;
 import com.github.MadyarovGleb.booking_mvp.entity.SagaCompensationOutbox;

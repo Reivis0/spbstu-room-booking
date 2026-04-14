@@ -60,6 +60,8 @@ target_link_libraries(test_ruz_importer PRIVATE
     ${POSTGRESQL_LIBRARIES}
     gtest
     gtest_main
+    ssl
+    crypto
     dl
 )
 
