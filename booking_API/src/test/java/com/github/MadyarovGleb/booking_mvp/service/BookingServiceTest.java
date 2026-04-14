@@ -7,6 +7,8 @@ import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngi
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.BookingConflict;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient.ValidationResult;
 import com.github.MadyarovGleb.booking_mvp.service.nats.NatsPublisher;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +38,9 @@ class BookingServiceTest {
     @Mock
     RedisService redisService;
 
+    @Spy
+    MeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     @InjectMocks
     BookingService bookingService;
 
@@ -46,6 +51,10 @@ class BookingServiceTest {
     void setUp() {
         userId = UUID.randomUUID();
         roomId = UUID.randomUUID();
+        // Since we are using @Spy for meterRegistry but want it to be passed into constructor properly,
+        // we should manually create BookingService if @InjectMocks has issues with final fields inside constructor,
+        // but @InjectMocks usually handles constructor injection. Let's see.
+        bookingService = new BookingService(bookingRepository, availability, natsPublisher, redisService, meterRegistry);
     }
 
     // ===================== CREATE =====================
