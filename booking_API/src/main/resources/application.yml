@@ -36,6 +36,17 @@ app:
     secret: ${JWT_SECRET:supersecret}
     issuer: architecht-booking-api
     access-ttl-seconds: 3600
+  saga:
+    max-active-bookings-per-user: ${SAGA_MAX_ACTIVE_BOOKINGS:5}
+    max-retries: ${SAGA_MAX_RETRIES:5}
+    retry-base-delay-ms: ${SAGA_RETRY_BASE_DELAY_MS:1000}
+    processor:
+      delay-ms: ${SAGA_PROCESSOR_DELAY_MS:2000}
+      batch-size: ${SAGA_PROCESSOR_BATCH_SIZE:50}
+  outbox:
+    publisher:
+      delay-ms: ${OUTBOX_PUBLISHER_DELAY_MS:1000}
+    batch-size: ${OUTBOX_BATCH_SIZE:100}
 
 nats:
   url: ${NATS_URL}

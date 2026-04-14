@@ -1,5 +1,7 @@
 package com.github.MadyarovGleb.booking_mvp.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -10,6 +12,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 public class SecurityConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
 
     private final JwtUtil jwtUtil;
 
@@ -29,7 +33,9 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(e -> e.authenticationEntryPoint((request, response, authException) -> {
-                    System.out.println("SecurityConfig: Authentication failed: " + authException.getMessage());
+                    logger.warn("Authentication entry point triggered for request_path={} reason={}",
+                            request.getRequestURI(),
+                            authException.getClass().getSimpleName());
                     response.sendError(403, "Access Denied: " + authException.getMessage());
                 }))
                 .addFilterBefore(new JwtAuthenticationFilter(jwtUtil), UsernamePasswordAuthenticationFilter.class);

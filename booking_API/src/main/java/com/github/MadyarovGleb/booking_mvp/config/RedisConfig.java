@@ -3,6 +3,8 @@ package com.github.MadyarovGleb.booking_mvp.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +17,8 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 @Configuration
 public class RedisConfig {
 
+    private static final Logger logger = LoggerFactory.getLogger(RedisConfig.class);
+
     @Value("${spring.redis.host}")
     private String redisHost;
 
@@ -26,17 +30,21 @@ public class RedisConfig {
 
     @Bean
     public LettuceConnectionFactory redisConnectionFactory() {
+        logger.info("Initializing Redis connection factory");
         RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
         config.setHostName(redisHost);
         config.setPort(redisPort);
         if (!redisPassword.isEmpty()) {
             config.setPassword(redisPassword);
         }
-        return new LettuceConnectionFactory(config);
+        LettuceConnectionFactory connectionFactory = new LettuceConnectionFactory(config);
+        logger.info("Redis connection factory initialized successfully");
+        return connectionFactory;
     }
 
     @Bean
     public RedisTemplate<String, Object> redisTemplate(LettuceConnectionFactory connectionFactory) {
+        logger.info("Initializing Redis template");
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
@@ -53,6 +61,7 @@ public class RedisConfig {
         template.setHashValueSerializer(serializer);
 
         template.afterPropertiesSet();
+        logger.info("Redis template initialized successfully");
         return template;
     }
 }

@@ -10,7 +10,7 @@ done
 echo "Creating NATS streams..."
 nats stream add booking_events \
     --server nats://localhost:4222 \
-    --subjects "booking.created,booking.updated,booking.cancelled,booking.rejected" \
+    --subjects "booking.saga.started,booking.confirmed,booking.updated,booking.cancelled,booking.rejected" \
     --storage file \
     --retention limits \
     --max-age 24h \

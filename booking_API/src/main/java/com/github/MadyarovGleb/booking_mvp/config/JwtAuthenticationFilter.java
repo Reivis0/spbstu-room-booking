@@ -1,11 +1,13 @@
 package com.github.MadyarovGleb.booking_mvp.config;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,6 +18,8 @@ import java.util.List;
 import java.util.UUID;
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     private final JwtUtil jwtUtil;
 
@@ -34,8 +38,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
-        System.out.println("JwtAuthenticationFilter: Processing request " + request.getMethod() + " " + request.getRequestURI());
-        
+
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             try {
@@ -43,20 +46,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 UUID userId = UUID.fromString(claims.getBody().getSubject());
                 String role = (String) claims.getBody().get("role");
 
-                System.out.println("JwtAuthenticationFilter: Authenticated user " + userId + " with role " + role);
+                MDC.put("user_id", userId.toString());
+                logger.debug("JWT authentication succeeded for request_path={}", request.getRequestURI());
 
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
                 var authentication = new UsernamePasswordAuthenticationToken(userId, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
 
-            } catch (Exception e) {
-                System.out.println("JwtAuthenticationFilter: Token parsing failed: " + e.getMessage());
-                e.printStackTrace();
+            } catch (JwtException | IllegalArgumentException e) {
+                logger.warn("JWT authentication failed for request_path={} reason={}",
+                        request.getRequestURI(),
+                        e.getClass().getSimpleName());
                 response.setStatus(401);
                 return;
             }
-        } else {
-            System.out.println("JwtAuthenticationFilter: No valid Authorization header found");
         }
 
         filterChain.doFilter(request, response);

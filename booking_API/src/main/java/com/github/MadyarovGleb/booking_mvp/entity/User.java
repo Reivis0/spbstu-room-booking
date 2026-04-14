@@ -2,6 +2,8 @@ package com.github.MadyarovGleb.booking_mvp.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -27,7 +29,8 @@ public class User {
     private String lastname;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "user_role")
     private Role role;
 
     @Column(name = "is_active", nullable = false)
