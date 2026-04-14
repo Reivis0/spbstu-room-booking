@@ -95,7 +95,7 @@ cat > configs/nats_config.ini << EOF\n\
 [booking_service]\nhost=${NATS_HOST:-localhost}\nclient_port=${NATS_PORT:-4222}\nEOF\n\
 exec ./availability_engine "$@"\n' > entrypoint.sh && chmod +x entrypoint.sh
 
-EXPOSE 50051
+EXPOSE 50051 8082
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD nc -z localhost 50051 || exit 1

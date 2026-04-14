@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include "MetricsRegistry.h"
 
 std::map<std::string, std::string> RedisAsyncClient::RedisConnector::read_config()
 {
@@ -280,6 +281,24 @@ void RedisAsyncClient::genericCallback(redisAsyncContext* context, void* reply, 
     }
 }
 
+void RedisAsyncClient::getCallback(redisAsyncContext* context, void* reply, void* privdata)
+{
+    redisReply* r = static_cast<redisReply*>(reply);
+    if (r && r->type == REDIS_REPLY_STRING) {
+        if (MetricsRegistry::instance().cache_hits_total)
+            MetricsRegistry::instance().cache_hits_total->Increment();
+    } else {
+        if (MetricsRegistry::instance().cache_misses_total)
+            MetricsRegistry::instance().cache_misses_total->Increment();
+    }
+
+    IRedisCallback* cb = static_cast<IRedisCallback*>(privdata);
+    if(cb)
+    {
+        cb->onRedisReply(r);
+    }
+}
+
 void RedisAsyncClient::get(const std::string& key, IRedisCallback* cb)
 {
     if(!is_connected() || !cb)
@@ -291,7 +310,7 @@ void RedisAsyncClient::get(const std::string& key, IRedisCallback* cb)
         }
         return;
     }
-    redisAsyncCommand(m_connector.context, genericCallback, cb,"GET %s", key.c_str());
+    redisAsyncCommand(m_connector.context, getCallback, cb,"GET %s", key.c_str());
 }
 
 void RedisAsyncClient::setex(const std::string& key, int ttl_seconds, const std::string& value, IRedisCallback* cb)

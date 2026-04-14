@@ -16,6 +16,7 @@ pkg_check_modules(POSTGRESQL REQUIRED libpq)
 add_executable(availability_engine
     src/main.cpp
     src/async_room_service.cpp
+    ../common/metrics/MetricsRegistry.cpp
 )
 
 target_compile_definitions(availability_engine PRIVATE
@@ -27,6 +28,7 @@ target_include_directories(availability_engine PRIVATE
     ${CMAKE_SOURCE_DIR}/include/genproto
     ${CMAKE_SOURCE_DIR}/log
     ${CMAKE_SOURCE_DIR}/src/common
+    ${CMAKE_SOURCE_DIR}/src/common/metrics
     ${REDIS_INCLUDE_DIRS}
     ${POSTGRESQL_INCLUDE_DIRS}
     ${LIBEVENT_INCLUDE_DIRS}
@@ -41,6 +43,8 @@ target_link_libraries(availability_engine PRIVATE
     ${LIBEVENT_LIBRARIES}
     Threads::Threads
     dl
+    prometheus-cpp::pull
+    prometheus-cpp::core
 )
 
 target_compile_options(availability_engine PRIVATE

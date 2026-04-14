@@ -170,6 +170,7 @@ services:
       - ccache_data:/root/.ccache
     ports:
       - "127.0.0.1:50051:50051"
+      - "127.0.0.1:8082:8082"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432

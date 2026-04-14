@@ -17,6 +17,16 @@ set(NATS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(cnats)
 
+message(STATUS "Fetching Prometheus-cpp...")
+FetchContent_Declare(
+  prometheus-cpp
+  GIT_REPOSITORY https://github.com/jupp0r/prometheus-cpp.git
+  GIT_TAG        v1.2.4
+)
+set(ENABLE_PUSH OFF CACHE BOOL "" FORCE)
+set(ENABLE_COMPRESSION OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(prometheus-cpp)
+
 add_subdirectory(log)
 add_subdirectory(protos)
 add_subdirectory(src)
