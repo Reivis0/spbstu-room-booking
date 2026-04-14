@@ -37,7 +37,7 @@ public class Booking {
     private OffsetDateTime updatedAt;
 
     public enum BookingStatus {
-        pending, confirmed, cancelled, rejected
+        pending, confirmed, cancelled, rejected, compensation_pending, compensated
     }
 
     @PrePersist
