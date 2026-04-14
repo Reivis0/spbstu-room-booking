@@ -41,4 +41,4 @@ private:
     bool m_running = true; // Flag to indicate if the client is running
 };
 
-#endif // NATS_ASYNC_CLIENT_HPP
+#endif

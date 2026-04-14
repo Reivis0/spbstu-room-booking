@@ -1,5 +1,6 @@
 #include "nats_async_client.hpp"
 #include <iostream>
+#include "MetricsRegistry.h"
 
 std::map<std::string, std::string> NatsAsyncClient::read_config()
 {
@@ -7,7 +8,7 @@ std::map<std::string, std::string> NatsAsyncClient::read_config()
   std::ifstream file("configs/nats_config.ini");
   
   if (!file.is_open()) {
-    LOG_ERROR("Failed to open config file");
+    LOG_ERROR("NATS: Failed to open config file");
     return config;
   }
   
@@ -94,9 +95,9 @@ void NatsAsyncClient::connect()
     }
 
     if (s != NATS_OK) {
-        LOG_ERROR("Failed to connect to NATS at " + m_url + ": " + natsStatus_GetText(s));
+        LOG_ERROR("NATS: Failed to connect to NATS at " + m_url + ": " + natsStatus_GetText(s));
     } else {
-        LOG_INFO("Connected to NATS at " + m_url);
+        LOG_INFO("NATS: Connected to NATS at " + m_url);
     }
 }
 
@@ -125,7 +126,14 @@ void NatsAsyncClient::publish(const std::string& subject, const std::string& dat
 
     natsStatus s = natsConnection_Publish(m_conn, subject.c_str(), data.c_str(), data.size());
     if (s != NATS_OK) {
-        LOG_ERROR(std::string("NATS Publish error: ") + natsStatus_GetText(s));
+        LOG_ERROR(std::string("NATS: NATS Publish error: ") + natsStatus_GetText(s));
+        if (MetricsRegistry::instance().nats_messages_failed_total) {
+            MetricsRegistry::instance().nats_messages_failed_total->Increment();
+        }
+    } else {
+        if (MetricsRegistry::instance().nats_messages_processed_total) {
+            MetricsRegistry::instance().nats_messages_processed_total->Increment();
+        }
     }
 }
 

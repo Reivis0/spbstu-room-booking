@@ -1,0 +1,13 @@
+**/.git
+**/.env
+**/tmp
+**/bin
+**/*.test
+**/coverage.out
+**/testdata
+**/.idea
+**/.vscode
+**/docs
+**/target
+**/.m2
+**/node_modules

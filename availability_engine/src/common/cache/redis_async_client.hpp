@@ -89,6 +89,7 @@ private:
   static void disconnectCallback(const redisAsyncContext* context, int status);
   
   static void genericCallback(redisAsyncContext* context, void* reply, void* privdata);
+  static void getCallback(redisAsyncContext* context, void* reply, void* privdata);
 
   void handleConnect(int status);
   void handleAuth(redisReply* reply);

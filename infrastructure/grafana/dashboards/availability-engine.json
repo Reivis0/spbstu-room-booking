@@ -1,0 +1,60 @@
+{
+  "title": "Availability Engine",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "NATS processed rate",
+      "targets": [
+        {
+          "expr": "rate(nats_messages_processed_total[1m])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "NATS error rate",
+      "targets": [
+        {
+          "expr": "rate(nats_messages_failed_total[1m])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Cache hit rate",
+      "targets": [
+        {
+          "expr": "rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) * 100",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "RUZ parse duration P95",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(schedule_parse_duration_seconds_bucket[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "DB query duration P95",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m]))",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
