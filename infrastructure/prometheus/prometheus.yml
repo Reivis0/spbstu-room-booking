@@ -7,10 +7,14 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  - job_name: 'booking_api'
+  - job_name: 'booking-api'
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: ['booking-api:8081']
+
+  - job_name: 'availability-engine'
+    static_configs:
+      - targets: ['availability-engine:8082']
 
   # Example of adding other services (if they expose metrics)
   # - job_name: 'frontend'
