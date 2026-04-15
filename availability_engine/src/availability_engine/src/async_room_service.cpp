@@ -1,86 +1,65 @@
 #include "async_room_service.hpp"
-#include <csignal>
+#include <grpcpp/server_builder.h>
 
-namespace {
-    AsyncRoomService* global_service_instance = nullptr;
-
-    void signal_handler(int signal) {
-        LOG_INFO("Signal handler invoked for signal: " + std::to_string(signal));
-        if (global_service_instance) {
-            LOG_INFO("Calling shutdown from signal handler.");
-            global_service_instance->shutdown();
-        } else {
-            LOG_WARN("Global service instance is null in signal handler.");
-        }
-    }
-}
-
-AsyncRoomService::AsyncRoomService(
-    std::shared_ptr<RedisAsyncClient> redis_client,
-    std::shared_ptr<PostgreSQLAsyncClient> pg_client,
-    std::shared_ptr<NatsAsyncClient> nats_client)
+AsyncRoomService::AsyncRoomService(std::shared_ptr<RedisAsyncClient> redis_client,
+                                 std::shared_ptr<PostgreSQLAsyncClient> pg_client,
+                                 std::shared_ptr<NatsAsyncClient> nats_client)
     : redis_client_(std::move(redis_client)),
       pg_client_(std::move(pg_client)),
-      nats_client_(std::move(nats_client)),
-      is_running_(false) {}
+      nats_client_(std::move(nats_client)) {}
 
 AsyncRoomService::~AsyncRoomService() {
     shutdown();
 }
 
 void AsyncRoomService::start() {
-    global_service_instance = this;
-    std::signal(SIGINT, signal_handler);
+    if (is_running_.exchange(true)) return;
 
-    try {
-        is_running_ = true;
-        LOG_INFO("AsyncRoomService started.");
-        
-        if (pg_client_) {
-            LOG_INFO("Connecting to PostgreSQL...");
-        }
-        if (redis_client_) {
-            LOG_INFO("Connecting to Redis...");
-        }
-        if (nats_client_) {
-            LOG_INFO("Connecting to NATS...");
-        }
-    } catch (const std::exception& e) {
-        LOG_ERROR(std::string("Error in AsyncRoomService::start: ") + e.what());
-        shutdown();
-    }
+    std::string server_address("0.0.0.0:50051");
+    grpc::ServerBuilder builder;
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+    builder.RegisterService(this);
+    
+    server_ = builder.BuildAndStart();
+    LOG_INFO("gRPC RoomService started on " + server_address);
 }
 
 void AsyncRoomService::shutdown() {
-    static bool is_shutdown = false; // Ensure shutdown is called only once
-
-    if (is_shutdown) {
-        LOG_WARN("AsyncRoomService shutdown called multiple times.");
-        return;
+    if (server_) {
+        LOG_INFO("Shutting down gRPC RoomService...");
+        server_->Shutdown();
+        server_.reset();
     }
-
-    if (is_running_) {
-        try {
-            is_running_ = false;
-            LOG_INFO("AsyncRoomService shutting down.");
-
-            if (pg_client_ && pg_client_->is_connected()) {
-                LOG_INFO("Disconnecting from PostgreSQL...");
-                pg_client_->disconnect();
-            }
-            if (redis_client_ && redis_client_->is_connected()) {
-                LOG_INFO("Disconnecting from Redis...");
-                redis_client_->disconnect();
-            }
-            if (nats_client_ && nats_client_->is_connected()) {
-                LOG_INFO("Disconnecting from NATS...");
-                nats_client_->disconnect();
-            }
-        } catch (const std::exception& e) {
-            LOG_ERROR(std::string("Error in AsyncRoomService::shutdown: ") + e.what());
-        }
-    }
-
-    is_shutdown = true;
+    is_running_ = false;
 }
 
+grpc::Status AsyncRoomService::ComputeIntervals(grpc::ServerContext* context, 
+                                              const room_service::ComputeIntervalsRequest* request,
+                                              room_service::ComputeIntervalsResponse* response) {
+    LOG_INFO("gRPC: ComputeIntervals called for room " + request->room_id());
+    // TODO: Implement actual logic
+    return grpc::Status::OK;
+}
+
+grpc::Status AsyncRoomService::Validate(grpc::ServerContext* context,
+                                      const room_service::ValidateRequest* request,
+                                      room_service::ValidateResponse* response) {
+    LOG_INFO("gRPC: Validate called for room=" + request->room_id() + 
+             " date=" + request->date() + " interval=" + request->start_time() + "-" + request->end_time());
+    
+    // For now, return always valid to allow SAGA to complete
+    response->set_is_valid(true);
+    auto* details = response->mutable_details();
+    details->set_duration_valid(true);
+    details->set_working_hours_valid(true);
+    details->set_no_conflicts(true);
+    
+    return grpc::Status::OK;
+}
+
+grpc::Status AsyncRoomService::OcupiedIntervals(grpc::ServerContext* context,
+                                              const room_service::OcupiedIntervalsRequest* request,
+                                              room_service::OcupiedIntervalsResponce* response) {
+    LOG_INFO("gRPC: OcupiedIntervals called for room " + request->room_id());
+    return grpc::Status::OK;
+}

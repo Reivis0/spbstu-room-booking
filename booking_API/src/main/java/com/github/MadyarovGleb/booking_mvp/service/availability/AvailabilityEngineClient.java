@@ -68,7 +68,7 @@ public class AvailabilityEngineClient {
 
         ComputeIntervalsRequest request = builder.build();
         ComputeIntervalsResponse response = executeWithFailover(
-                s -> s.computeIntervals(request),
+                s -> s.withDeadlineAfter(10, java.util.concurrent.TimeUnit.SECONDS).computeIntervals(request),
                 "compute_intervals"
         );
         logger.debug("Availability intervals computed room_id={} date={} slots_count={}",
@@ -90,7 +90,7 @@ public class AvailabilityEngineClient {
 
         ValidateRequest request = builder.build();
         ValidateResponse response = executeWithFailover(
-                s -> s.validate(request),
+                s -> s.withDeadlineAfter(10, java.util.concurrent.TimeUnit.SECONDS).validate(request),
                 "validate"
         );
         logger.debug("Availability validation completed room_id={} date={} is_valid={} conflicts_count={}",
@@ -116,7 +116,7 @@ public class AvailabilityEngineClient {
                 .build();
 
         OccupiedIntervalsResponse response = executeWithFailover(
-                s -> s.occupiedIntervals(request),
+                s -> s.withDeadlineAfter(10, java.util.concurrent.TimeUnit.SECONDS).occupiedIntervals(request),
                 "occupied_intervals"
         );
         logger.debug("Occupied intervals fetched room_id={} date={} intervals_count={}",

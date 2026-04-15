@@ -175,7 +175,7 @@ void RuzImporter::wait_for_next_cycle() {
 void RuzImporter::import_cycle() {
     LOG_INFO("RUZ_IMPORTER: Starting import cycle");
     
-    if (m_room_name_to_id.empty()) {
+    if (m_rooms_cache.empty()) {
         LOG_WARN("RUZ_IMPORTER: Cache empty, attempting reload...");
         load_rooms_cache();
     }
@@ -221,7 +221,7 @@ bool RuzImporter::load_rooms_cache() {
         return false;
     }
 
-    PGresult* res = PQexec(conn, "SELECT id, code FROM rooms");
+    PGresult* res = PQexec(conn, "SELECT id, code, ruz_id, building_ruz_id FROM rooms WHERE ruz_id IS NOT NULL");
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
         LOG_ERROR(std::string("RUZ_IMPORTER: Sync query failed: ") + PQerrorMessage(conn));
         PQclear(res);
@@ -230,14 +230,17 @@ bool RuzImporter::load_rooms_cache() {
     }
 
     int rows = PQntuples(res);
-    m_room_name_to_id.clear();
+    m_rooms_cache.clear();
     for (int i = 0; i < rows; ++i) {
-        std::string id = PQgetvalue(res, i, 0);
+        std::string uuid = PQgetvalue(res, i, 0);
         std::string code = PQgetvalue(res, i, 1);
-        m_room_name_to_id[code] = id;
+        int rid = std::stoi(PQgetvalue(res, i, 2));
+        int bid = std::stoi(PQgetvalue(res, i, 3));
+        
+        m_rooms_cache[code] = {uuid, rid, bid};
     }
 
-    LOG_INFO("RUZ_IMPORTER: Loaded " + std::to_string(m_room_name_to_id.size()) + " rooms via sync call.");
+    LOG_INFO("RUZ_IMPORTER: Loaded " + std::to_string(m_rooms_cache.size()) + " rooms from DB with RUZ IDs.");
 
     PQclear(res);
     PQfinish(conn);
@@ -250,34 +253,50 @@ bool RuzImporter::fetch_and_process() {
     DataProcessor proc;
     std::string current_date = get_current_date_string();
     std::vector<Lesson> all_valid_lessons;
-    int rooms_processed = 0;
+    
+    int total_rooms = m_rooms_cache.size();
+    int current_idx = 0;
+    int rooms_with_data = 0;
 
-    for (const auto& [room_code, room_uuid] : m_room_name_to_id) {
+    LOG_INFO("RUZ_IMPORTER: Starting fetch for " + std::to_string(total_rooms) + " rooms.");
+
+    for (const auto& [room_code, info] : m_rooms_cache) {
+        current_idx++;
         if (m_shutdown) break;
 
-        std::string url = m_api_url + "/auditory/" + room_code + "?date=" + current_date;
+        // Correct URL format: /buildings/{bid}/rooms/{rid}/scheduler
+        std::string url = m_api_url + "/buildings/" + std::to_string(info.building_ruz_id) + 
+                          "/rooms/" + std::to_string(info.ruz_id) + "/scheduler?date=" + current_date;
 
         std::string json = http.fetch_ruz_data(url);
         
         if (json.empty()) {
-         LOG_WARN("Empty/Failed response for room code: " + room_code);
+            LOG_WARN("Room " + std::to_string(current_idx) + "/" + std::to_string(total_rooms) + 
+                     ": Empty response for " + room_code);
             continue;
         }
 
         std::vector<Lesson> lessons = proc.parse_and_transform(json);
         
-        for (auto& l : lessons) {
-            l.room_id = room_uuid; 
-            
-            l.hash = l.compute_hash(); 
-            all_valid_lessons.push_back(l);
+        if (!lessons.empty()) {
+            rooms_with_data++;
+            for (auto& l : lessons) {
+                l.room_id = info.uuid; 
+                l.hash = l.compute_hash(); 
+                all_valid_lessons.push_back(l);
+            }
         }
-        rooms_processed++;
+
+        if (current_idx % 50 == 0 || current_idx == total_rooms) {
+            LOG_INFO("Progress: " + std::to_string(current_idx) + "/" + std::to_string(total_rooms) + 
+                     " rooms processed. Lessons found: " + std::to_string(all_valid_lessons.size()));
+        }
         
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        // Rate limiting to prevent 429 errors
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
     }
 
-    LOG_INFO("Fetched data for " + std::to_string(rooms_processed) + " rooms. Total lessons: " + std::to_string(all_valid_lessons.size()));
+    LOG_INFO("Fetched data for " + std::to_string(rooms_with_data) + " rooms. Total lessons: " + std::to_string(all_valid_lessons.size()));
 
     if (all_valid_lessons.empty()) {
         LOG_WARN("No lessons found for any room.");

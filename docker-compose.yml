@@ -196,11 +196,12 @@ services:
       - booking-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "pgrep", "ruz_importer"]
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+
 
 
   ruz-importer:
@@ -217,7 +218,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       NATS_HOST: nats
       NATS_PORT: 4222
-      RUZ_API_URL: https://ruz.spbstu.ru/api/v1/ruz/scheduler
+      RUZ_API_URL: https://ruz.spbstu.ru/api/v1/ruz
       RUZ_IMPORT_INTERVAL: 3600
     depends_on:
       postgres:

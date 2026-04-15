@@ -53,14 +53,6 @@ public class RoomService {
             MDC.put("building_id", buildingId.toString());
         }
 
-        String cacheKey = String.format("rooms:search:%s:%s:%s:%s:%s:%s",
-                buildingId, capacityMin, capacityMax, features, search, availableFrom + "-" + availableTo);
-        List<Room> cached = redis.get(cacheKey, List.class);
-        if (cached != null) {
-            logger.debug("Room search returned from cache count={}", cached.size());
-            return cached;
-        }
-
         List<Room> rooms = roomRepository.findAll(); // TODO: добавить фильтры по buildingId, capacity, features, search
 
         if (availableFrom != null && availableTo != null) {
@@ -74,19 +66,12 @@ public class RoomService {
             );
         }
 
-        redis.set(cacheKey, rooms, Duration.ofMinutes(10));
-        logger.info("Room search completed and cached count={}", rooms.size());
+        logger.info("Room search completed count={}", rooms.size());
         return rooms;
     }
 
     public List<TimeSlot> getAvailability(UUID roomId, String date, int minDurationMinutes) {
         MDC.put("room_id", roomId.toString());
-        String cacheKey = String.format("availability:%s:%s", roomId, date);
-        List<TimeSlot> cached = redis.get(cacheKey, List.class);
-        if (cached != null) {
-            logger.debug("Room availability returned from cache date={} slots_count={}", date, cached.size());
-            return cached;
-        }
 
         String startTime = "09:00";
         String endTime = "21:00";
@@ -98,8 +83,7 @@ public class RoomService {
                 endTime
         );
 
-        redis.set(cacheKey, slots, Duration.ofMinutes(5));
-        logger.info("Room availability computed and cached date={} slots_count={} min_duration_minutes={}",
+        logger.info("Room availability computed date={} slots_count={} min_duration_minutes={}",
                 date, slots.size(), minDurationMinutes);
         return slots;
     }

@@ -46,7 +46,13 @@ private:
     int m_retry_attempts{3};
     int m_retry_delay_seconds{5};
 
-    std::map<std::string, std::string> m_room_name_to_id;
+    struct RoomInfo {
+        std::string uuid;
+        int ruz_id;
+        int building_ruz_id;
+    };
+
+    std::map<std::string, RoomInfo> m_rooms_cache;
 };
 
 #endif
