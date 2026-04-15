@@ -50,12 +50,9 @@ COPY protos/CMakeLists.txt protos/
 COPY tests/CMakeLists.txt tests/
 
 # Now copy the source code
+# Build Phase
 COPY . .
-
-# Use BuildKit cache for compilation (ccache)
-ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache
-RUN --mount=type=cache,target=/root/.ccache \
-    mkdir -p build && cd build && \
+RUN rm -rf build && mkdir -p build && cd build && \
     cmake .. && \
     make -j$(nproc)
 

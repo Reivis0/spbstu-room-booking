@@ -21,6 +21,7 @@ std::map<std::string, std::string> load_config()
   std::string line, section;
   while (std::getline(file, line))
   {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
     line.erase(0, line.find_first_not_of(" \t"));
     line.erase(line.find_last_not_of(" \t") + 1);
     
@@ -32,6 +33,7 @@ std::map<std::string, std::string> load_config()
     if (line[0] == '[' && line.back() == ']')
     {
       section = line.substr(1, line.size() - 2);
+      LOG_INFO("CONFIG: Found section [" + section + "]");
       continue;
     }
     
@@ -46,10 +48,12 @@ std::map<std::string, std::string> load_config()
       value.erase(0, value.find_first_not_of(" \t"));
       value.erase(value.find_last_not_of(" \t") + 1);
       
-      config[section + "." + key] = value;
+      std::string full_key = section.empty() ? key : section + "." + key;
+      config[full_key] = value;
+      LOG_INFO("CONFIG: Loaded key " + full_key + " = " + value);
     }
   }
   
-  LOG_INFO("RUS_IMPORTER: CONFIG: Configuration loaded successfully");
+  LOG_INFO("RUS_IMPORTER: CONFIG: Configuration loaded successfully. Total keys: " + std::to_string(config.size()));
   return config;
 }

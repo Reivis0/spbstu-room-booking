@@ -69,11 +69,9 @@ std::string PostgreSQLAsyncClient::Connector::get_connecting_str() {
 
 
 PostgreSQLAsyncClient::PostgreSQLAsyncClient(std::shared_ptr<PostgreSQLConnectionPool> pool) : connection_pool(pool) {
-    start();
 }
 
 PostgreSQLAsyncClient::PostgreSQLAsyncClient() : connection_pool(nullptr) {
-    start();
 }
 
 PostgreSQLAsyncClient::~PostgreSQLAsyncClient() {
@@ -113,8 +111,7 @@ void PostgreSQLAsyncClient::stop() {
 
 
 void PostgreSQLAsyncClient::execute(const std::string& sql, const std::vector<std::string>& params, std::unique_ptr<IGenericCb> cb) {
-    auto connection = connection_pool->acquire(); // Use -> to access acquire
-
+    if (!cb) return;
     PendingQuery q;
     q.kind = PendingQuery::K_Generic;
     q.sql = sql;
@@ -125,8 +122,6 @@ void PostgreSQLAsyncClient::execute(const std::string& sql, const std::vector<st
         std::lock_guard<std::mutex> lock(m_queue_mutex);
         m_queue.push_back(std::move(q));
     }
-
-    connection_pool->release(connection); // Use -> to access release
 }
 
 void PostgreSQLAsyncClient::executeQueryWithTable(const std::string& sql_template, const std::string& table,
@@ -268,23 +263,13 @@ void PostgreSQLAsyncClient::update_interests(bool rd, bool wr) {
 }
 
 void PostgreSQLAsyncClient::disconnect() {
-    static bool is_disconnected = false; // Ensure disconnect is called only once
-
-    if (is_disconnected) {
-        LOG_WARN("PostgreSQL disconnect called multiple times.");
-        return;
-    }
-
     LOG_INFO("Disconnecting from PostgreSQL...");
     if (m_connect.connection) {
         PQfinish(m_connect.connection);
         m_connect.connection = nullptr;
+        m_connect.is_connected = false;
         LOG_INFO("PostgreSQL connection closed.");
-    } else {
-        LOG_WARN("PostgreSQL connection was already null.");
     }
-
-    is_disconnected = true;
 }
 
 void PostgreSQLAsyncClient::run_loop() {

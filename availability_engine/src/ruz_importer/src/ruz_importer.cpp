@@ -54,12 +54,14 @@ RuzImporter::RuzImporter(std::shared_ptr<PostgreSQLAsyncClient> pg_client,
       m_shutdown(false) 
 {
     auto config = load_config();
+
+    if (config.count("ruz_importer.api_url")) m_api_url = config.at("ruz_importer.api_url");
     
     if (!m_api_url.empty() && m_api_url.back() == '/') {
         m_api_url.pop_back();
     }
 
-    if (config.count("import_interval_seconds")) m_import_interval_seconds = std::stoi(config.at("import_interval_seconds"));
+    if (config.count("ruz_importer.import_interval_seconds")) m_import_interval_seconds = std::stoi(config.at("ruz_importer.import_interval_seconds"));
     if (config.count("retry_attempts")) m_retry_attempts = std::stoi(config.at("retry_attempts"));
     if (config.count("retry_delay_seconds")) m_retry_delay_seconds = std::stoi(config.at("retry_delay_seconds"));
 
@@ -79,10 +81,20 @@ void RuzImporter::start() {
         m_shutdown = false;
 
         if (m_pg_client) {
-            LOG_INFO("Connecting to PostgreSQL...");
+            LOG_INFO("RUZ_Importer: Connecting to PostgreSQL...");
+            for (int i = 0; i < 20 && !m_pg_client->is_connected(); ++i) {
+                if (m_shutdown) return;
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+            if (m_pg_client->is_connected()) {
+                LOG_INFO("RUZ_Importer: PostgreSQL connected. Pre-loading rooms...");
+                load_rooms_cache();
+            } else {
+                LOG_ERROR("RUZ_Importer: PostgreSQL NOT connected after timeout.");
+            }
         }
         if (m_nats_client) {
-            LOG_INFO("Connecting to NATS...");
+            LOG_INFO("RUZ_Importer: Connecting to NATS...");
         }
 
         main_loop();
@@ -162,6 +174,12 @@ void RuzImporter::wait_for_next_cycle() {
 
 void RuzImporter::import_cycle() {
     LOG_INFO("RUZ_IMPORTER: Starting import cycle");
+    
+    if (m_room_name_to_id.empty()) {
+        LOG_WARN("RUZ_IMPORTER: Cache empty, attempting reload...");
+        load_rooms_cache();
+    }
+
     auto start = std::chrono::steady_clock::now();
     
     bool success = false;
@@ -179,7 +197,7 @@ void RuzImporter::import_cycle() {
 
     auto end = std::chrono::steady_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    
+
     if (success) {
         LOG_INFO("RUZ_IMPORTER: Cycle OK. Time: " + std::to_string(ms) + "ms");
     } else {
@@ -188,38 +206,46 @@ void RuzImporter::import_cycle() {
 }
 
 bool RuzImporter::load_rooms_cache() {
-    auto cb = std::make_unique<SyncGenericCb>();
-    auto fut = cb->promise.get_future();
-    
-    m_pg_client->execute("SELECT id, code FROM rooms", {}, std::move(cb));
-    
-    if (fut.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
-         LOG_ERROR("DB Timeout loading rooms");
-         return false;
-    }
+    LOG_INFO("RUZ_IMPORTER: Loading rooms cache (synchronous)...");
 
-    auto res = fut.get();
-    if (!res.first) {
-        LOG_ERROR("DB Error loading rooms: " + res.second);
+    std::string conn_str = "host=" + std::string(getenv("POSTGRES_HOST") ? getenv("POSTGRES_HOST") : "postgres") +
+                          " port=" + std::string(getenv("POSTGRES_PORT") ? getenv("POSTGRES_PORT") : "5432") +
+                          " dbname=" + std::string(getenv("POSTGRES_DB") ? getenv("POSTGRES_DB") : "booking_mvp_db") +
+                          " user=" + std::string(getenv("POSTGRES_USER") ? getenv("POSTGRES_USER") : "postgres") +
+                          " password=" + std::string(getenv("POSTGRES_PASSWORD") ? getenv("POSTGRES_PASSWORD") : "password");
+
+    PGconn* conn = PQconnectdb(conn_str.c_str());
+    if (PQstatus(conn) != CONNECTION_OK) {
+        LOG_ERROR(std::string("RUZ_IMPORTER: Sync connection failed: ") + PQerrorMessage(conn));
+        PQfinish(conn);
         return false;
     }
 
-    m_room_name_to_id.clear();
-    for (const auto& row : cb->result) {
-        if (row.size() >= 2) {
-            m_room_name_to_id[row[1]] = row[0];
-        }
+    PGresult* res = PQexec(conn, "SELECT id, code FROM rooms");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        LOG_ERROR(std::string("RUZ_IMPORTER: Sync query failed: ") + PQerrorMessage(conn));
+        PQclear(res);
+        PQfinish(conn);
+        return false;
     }
-    LOG_INFO("Loaded " + std::to_string(m_room_name_to_id.size()) + " rooms into cache.");
+
+    int rows = PQntuples(res);
+    m_room_name_to_id.clear();
+    for (int i = 0; i < rows; ++i) {
+        std::string id = PQgetvalue(res, i, 0);
+        std::string code = PQgetvalue(res, i, 1);
+        m_room_name_to_id[code] = id;
+    }
+
+    LOG_INFO("RUZ_IMPORTER: Loaded " + std::to_string(m_room_name_to_id.size()) + " rooms via sync call.");
+
+    PQclear(res);
+    PQfinish(conn);
     return true;
 }
 
-bool RuzImporter::fetch_and_process() {
-    if (m_room_name_to_id.empty()) {
-        LOG_WARN("RUZ_IMPORTER: No rooms found in DB (cache empty). Nothing to import. Populate 'rooms' table first.");
-        return true; 
-    }
 
+bool RuzImporter::fetch_and_process() {
     HttpClient http;
     DataProcessor proc;
     std::string current_date = get_current_date_string();

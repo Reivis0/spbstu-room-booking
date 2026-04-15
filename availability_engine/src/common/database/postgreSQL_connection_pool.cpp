@@ -21,6 +21,7 @@ PostgreSQLConnectionPool::~PostgreSQLConnectionPool() {
 void PostgreSQLConnectionPool::initialize_pool() {
     for (size_t i = 0; i < m_pool_size; ++i) {
         auto connection = std::make_shared<PostgreSQLAsyncClient>(shared_from_this());
+        connection->start(); // Start the client thread
         m_pool.push(connection);
     }
 }
