@@ -196,11 +196,12 @@ services:
       - booking-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      test: ["CMD", "pgrep", "ruz_importer"]
       interval: 30s
-      timeout: 3s
+      timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 40s
+
 
   ruz-importer:
     build:
