@@ -184,14 +184,23 @@ void PostgreSQLAsyncClient::getBookingsByRoomAndDate(const char* room_code, cons
 
 void PostgreSQLAsyncClient::getConflictsByInterval(const char* room_id, const char* startsAtISO, const char* endsAtISO, std::unique_ptr<IconflictsCb> cb) {
     static const char* SQL =
-        "SELECT b.id, b.starts_at, b.ends_at, b.user_id, ''::text, b.status::text "
-        "FROM bookings b JOIN rooms r ON b.room_id = r.id "
-        "WHERE r.code = $1 AND b.status = 'confirmed'"; 
-        
+        "SELECT b.id::text, b.starts_at::text, b.ends_at::text, b.user_id::text, 'Booking'::text, b.status::text "
+        "FROM bookings b "
+        "WHERE b.room_id = $1::uuid "
+        "  AND b.status = 'confirmed' "
+        "  AND b.starts_at < $3::timestamptz "
+        "  AND b.ends_at > $2::timestamptz "
+        "UNION ALL "
+        "SELECT si.id::text, si.starts_at::text, si.ends_at::text, '00000000-0000-0000-0000-000000000000'::text, si.subject, 'confirmed'::text "
+        "FROM schedules_import si "
+        "WHERE si.room_id = $1::uuid "
+        "  AND si.starts_at < $3::timestamptz "
+        "  AND si.ends_at > $2::timestamptz";
+
     PendingQuery q;
     q.kind = PendingQuery::K_ConflictsByInterval;
     q.sql = SQL;
-    q.params = { room_id ? room_id : "" };
+    q.params = { room_id ? room_id : "", startsAtISO ? startsAtISO : "", endsAtISO ? endsAtISO : "" };
     q.conflicts_cb = std::move(cb);
 
     {
@@ -199,7 +208,6 @@ void PostgreSQLAsyncClient::getConflictsByInterval(const char* room_id, const ch
         m_queue.emplace_back(std::move(q));
     }
 }
-
 void PostgreSQLAsyncClient::begin_async_connect() {
     Connector connector;
     m_connect.connection = PQconnectStart(connector.get_connecting_str().c_str());
@@ -269,6 +277,27 @@ void PostgreSQLAsyncClient::disconnect() {
         m_connect.connection = nullptr;
         m_connect.is_connected = false;
         LOG_INFO("PostgreSQL connection closed.");
+    }
+    
+    // Fail in-flight query
+    if (m_inflight) {
+        PendingQuery q = std::move(*m_inflight);
+        m_inflight.reset();
+        Result empty;
+        if (q.kind == PendingQuery::K_Generic) FinishGeneric_(this, q, std::move(empty), false, "connection lost");
+        else if (q.kind == PendingQuery::K_BookingsByRoomDate) FinishBookingsByRoomDate_(this, q, std::move(empty), false, "connection lost");
+        else if (q.kind == PendingQuery::K_ConflictsByInterval) FinishConflicts_(this, q, std::move(empty), false, "connection lost");
+    }
+
+    // Fail all pending queries
+    std::lock_guard<std::mutex> lock(m_queue_mutex);
+    while (!m_queue.empty()) {
+        PendingQuery q = std::move(m_queue.front());
+        m_queue.erase(m_queue.begin());
+        Result empty;
+        if (q.kind == PendingQuery::K_Generic) FinishGeneric_(this, q, std::move(empty), false, "connection lost (clearing queue)");
+        else if (q.kind == PendingQuery::K_BookingsByRoomDate) FinishBookingsByRoomDate_(this, q, std::move(empty), false, "connection lost (clearing queue)");
+        else if (q.kind == PendingQuery::K_ConflictsByInterval) FinishConflicts_(this, q, std::move(empty), false, "connection lost (clearing queue)");
     }
 }
 
@@ -368,7 +397,7 @@ void PostgreSQLAsyncClient::try_send_next() {
 
     if (PQsendQueryParams(m_connect.connection, q.sql.c_str(),
                           (int)q.params.size(), nullptr,
-                          vals.data(), lens.data(), fmts.data(), 0) != 1) 
+                          vals.data(), lens.data(), nullptr, 0) != 1) 
     {
         std::string err = PQerrorMessage(m_connect.connection);
         PendingQuery bad = std::move(*m_inflight);
@@ -411,8 +440,6 @@ void PostgreSQLAsyncClient::drain_results(PendingQuery& q) {
         PQclear(r);
     }
     
-    m_inflight.reset();
-
     switch (q.kind) {
         case PendingQuery::K_BookingsByRoomDate:
             if (q.bookings_cb) FinishBookingsByRoomDate_(this, q, std::move(out), success, err_msg.c_str());
@@ -424,6 +451,8 @@ void PostgreSQLAsyncClient::drain_results(PendingQuery& q) {
             if (q.generic_cb) FinishGeneric_(this, q, std::move(out), success, err_msg.c_str());
             break;
     }
+    
+    m_inflight.reset();
     try_send_next();
 }
 

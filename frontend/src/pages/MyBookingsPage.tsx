@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Booking } from '../types';
+import { Booking, Room } from '../types';
 import { bookingsApi } from '../api/bookings';
 import { roomsApi } from '../api/rooms';
 import { useAuthStore } from '../store/useAuthStore';
@@ -31,23 +31,19 @@ const MyBookingsPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await bookingsApi.getMyBookings();
       
-      const roomIds = Array.from(new Set(data.map(b => b.roomId)));
-      const roomsMap = new Map();
-      
-      await Promise.all(
-        roomIds.map(async (roomId) => {
-          try {
-            const room = await roomsApi.getById(roomId);
-            roomsMap.set(roomId, room);
-          } catch (err) {
-            console.warn(`[MyBookingsPage] Failed to load room ${roomId}:`, err);
-          }
+      // Fetch bookings and rooms in parallel
+      const [bookingsData, roomsData] = await Promise.all([
+        bookingsApi.getMyBookings(),
+        roomsApi.getAll().catch(err => {
+          console.error('[MyBookingsPage] Failed to fetch rooms:', err);
+          return [] as Room[];
         })
-      );
+      ]);
       
-      const bookingsWithDates = data.map((booking) => {
+      const roomsMap = new Map(roomsData.map(r => [r.id, r]));
+      
+      const bookingsWithDates = bookingsData.map((booking) => {
         const room = roomsMap.get(booking.roomId);
         return {
           ...booking,
@@ -56,6 +52,7 @@ const MyBookingsPage: React.FC = () => {
           roomName: room?.name || `Аудитория ${room?.code || booking.roomId}`,
         };
       });
+      
       setBookings(bookingsWithDates);
     } catch (err: any) {
       if (err.response?.status === 401 || err.response?.status === 403) {

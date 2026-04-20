@@ -68,3 +68,17 @@ export interface ScheduleByFloor {
   [floor: number]: ScheduleRow[];
 }
 
+export interface ScheduleSlot {
+  from: string;
+  to: string;
+  type: 'schedule' | 'booking' | 'free';
+  label: string;
+  status: 'occupied' | 'free';
+}
+
+export interface RoomSchedule {
+  date: string;
+  roomId: string;
+  slots: ScheduleSlot[];
+}
+

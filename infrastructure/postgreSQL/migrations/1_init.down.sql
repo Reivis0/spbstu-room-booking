@@ -1,5 +1,0 @@
-DROP TABLE IF EXISTS bookings;
-DROP TABLE IF EXISTS rooms;
-DROP TABLE IF EXISTS schedules_import;
-DROP TABLE IF EXISTS buildings;
-DROP TABLE IF EXISTS users;

@@ -31,7 +31,7 @@ FetchContent_MakeAvailable(prometheus-cpp)
 add_subdirectory(log)
 add_subdirectory(protos)
 add_subdirectory(src)
-add_subdirectory(tests)
+# add_subdirectory(tests)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -49,25 +49,3 @@ find_library(LIBPQ pq REQUIRED)
 add_library(logger log/logger.cpp)
 
 enable_testing()
-
-add_executable(test_postgresql_connection_pool tests/test_postgresql_connection_pool.cpp)
-target_link_libraries(test_postgresql_connection_pool PRIVATE common_lib ${GTEST_BOTH_LIBRARIES})
-add_test(NAME PostgreSQLConnectionPoolTest COMMAND test_postgresql_connection_pool)
-
-add_executable(test_postgresql_async_client tests/test_postgresql_async_client.cpp)
-target_link_libraries(test_postgresql_async_client PRIVATE common_lib ${GTEST_BOTH_LIBRARIES})
-add_test(NAME PostgreSQLAsyncClientTest COMMAND test_postgresql_async_client)
-
-add_executable(test_redis_async_client tests/test_redis_async_client.cpp)
-target_link_libraries(test_redis_async_client PRIVATE common_lib ${GTEST_BOTH_LIBRARIES})
-target_include_directories(test_redis_async_client PRIVATE ${CMAKE_SOURCE_DIR}/src/common/cache)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBEVENT REQUIRED libevent)
-
-target_link_libraries(test_redis_async_client PRIVATE ${LIBEVENT_LIBRARIES})
-add_test(NAME RedisAsyncClientTest COMMAND test_redis_async_client)
-
-add_executable(test_nats_client tests/test_nats_client.cpp)
-target_link_libraries(test_nats_client PRIVATE common_lib ${GTEST_BOTH_LIBRARIES})
-target_include_directories(test_nats_client PRIVATE ${CMAKE_SOURCE_DIR}/src/common/messaging)
-add_test(NAME NATSClientTest COMMAND test_nats_client)

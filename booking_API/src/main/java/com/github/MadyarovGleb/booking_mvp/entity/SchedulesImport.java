@@ -14,7 +14,7 @@ public class SchedulesImport {
     @GeneratedValue
     private UUID id;
 
-    @Column(name = "room_id", nullable = false)
+    @Column(name = "room_id")
     private UUID roomId;
 
     @Column(name = "starts_at", nullable = false)
@@ -22,6 +22,12 @@ public class SchedulesImport {
 
     @Column(name = "ends_at", nullable = false)
     private OffsetDateTime endsAt;
+
+    @Column
+    private String subject;
+
+    @Column
+    private String teacher;
 
     @Column(nullable = false)
     private String source;

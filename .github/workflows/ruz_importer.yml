@@ -1,0 +1,44 @@
+name: RUZ Importer CI
+on:
+  push:
+    paths:
+      - 'availability_engine/src/ruz_importer/**'
+      - '.github/workflows/ruz_importer.yml'
+  pull_request:
+    paths:
+      - 'availability_engine/src/ruz_importer/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: booking_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            cmake libcurl4-openssl-dev \
+            libjsoncpp-dev libgtest-dev \
+            libpq-dev libssl-dev
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        working-directory: availability_engine
+      - name: Build
+        run: cmake --build build --parallel 4 --target ruz_importer test_parsers
+        working-directory: availability_engine
+      - name: Run unit tests
+        run: ./build/bin/test_parsers
+        working-directory: availability_engine

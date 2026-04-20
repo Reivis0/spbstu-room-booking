@@ -34,9 +34,11 @@ int main()
     pg_client->start(); 
 
     auto nats_client = std::make_shared<NatsAsyncClient>();
-    // nats_client->start(); // If it needs explicit start too
+    
+    auto redis_client = std::make_shared<RedisAsyncClient>();
+    redis_client->connect();
 
-    g_importer = std::make_unique<RuzImporter>(pg_client, nats_client);
+    g_importer = std::make_unique<RuzImporter>(pg_client, nats_client, redis_client);
     
     LOG_INFO("RUZ_Importer: Service initialized. Starting main loop...");
     g_importer->start();

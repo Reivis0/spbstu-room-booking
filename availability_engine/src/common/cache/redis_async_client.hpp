@@ -51,6 +51,7 @@ public:
   bool is_connected() const; // Declaration only
 
   void get(const std::string& key, std::unique_ptr<IRedisCallback> cb);
+  void del(const std::string& key, std::unique_ptr<IRedisCallback> cb = nullptr);
   void setex(const std::string& key, int ttl_seconds, const std::string& value, std::unique_ptr<IRedisCallback> cb = nullptr);
   void setProtobuf(const std::string& key, int ttl_seconds, const google::protobuf::Message& message, std::unique_ptr<IRedisCallback> cb = nullptr);
   void getProtobuf(const std::string& key, google::protobuf::Message& message, std::shared_ptr<IRedisCallback> cb);

@@ -3,6 +3,7 @@
 #include "data_processor.hpp"
 #include "config.hpp"
 #include "logger.hpp"
+#include <libpq-fe.h>
 #include <thread>
 #include <chrono>
 #include <future>
@@ -11,15 +12,48 @@
 #include <iomanip>
 #include <ctime>
 #include <csignal>
-
+#include <openssl/evp.h>
 
 std::string get_current_date_string() {
     auto now = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-    std::tm now_tm = *std::localtime(&now_c);
+    std::tm now_tm = {};
+    localtime_r(&now_c, &now_tm);
     
     std::stringstream ss;
     ss << std::put_time(&now_tm, "%Y-%m-%d");
+    return ss.str();
+}
+
+std::string get_future_date_string(int days_ahead) {
+    auto now = std::chrono::system_clock::now();
+    auto future = now + std::chrono::hours(24 * days_ahead);
+    std::time_t future_c = std::chrono::system_clock::to_time_t(future);
+    std::tm future_tm = {};
+    localtime_r(&future_c, &future_tm);
+    
+    std::stringstream ss;
+    ss << std::put_time(&future_tm, "%Y-%m-%d");
+    return ss.str();
+}
+
+std::string sha256(const std::string& data) {
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int lengthOfHash = 0;
+
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
+    if(context != nullptr) {
+        if(EVP_DigestInit_ex(context, EVP_sha256(), nullptr)) {
+            EVP_DigestUpdate(context, data.c_str(), data.size());
+            EVP_DigestFinal_ex(context, hash, &lengthOfHash);
+        }
+        EVP_MD_CTX_free(context);
+    }
+
+    std::stringstream ss;
+    for(unsigned int i = 0; i < lengthOfHash; i++) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+    }
     return ss.str();
 }
 
@@ -41,31 +75,32 @@ namespace {
         if (global_importer_instance) {
             LOG_INFO("Calling shutdown from signal handler.");
             global_importer_instance->shutdown();
-        } else {
-            LOG_WARN("Global importer instance is null in signal handler.");
         }
     }
 }
 
 RuzImporter::RuzImporter(std::shared_ptr<PostgreSQLAsyncClient> pg_client,
-                         std::shared_ptr<NatsAsyncClient> nats_client)
+                         std::shared_ptr<NatsAsyncClient> nats_client,
+                         std::shared_ptr<RedisAsyncClient> redis_client)
     : m_pg_client(std::move(pg_client)),
       m_nats_client(std::move(nats_client)),
-      m_shutdown(false) 
+      m_redis_client(std::move(redis_client))
 {
     auto config = load_config();
 
-    if (config.count("ruz_importer.api_url")) m_api_url = config.at("ruz_importer.api_url");
-    
-    if (!m_api_url.empty() && m_api_url.back() == '/') {
-        m_api_url.pop_back();
+    config_.universities = {"leti", "spbptu", "spbgu"};
+    if (const char* env_u = std::getenv("RUZ_UNIVERSITIES")) {
+        std::stringstream ss(env_u);
+        std::string item;
+        config_.universities.clear();
+        while (std::getline(ss, item, ',')) {
+            if (!item.empty()) config_.universities.push_back(item);
+        }
     }
 
-    if (config.count("ruz_importer.import_interval_seconds")) m_import_interval_seconds = std::stoi(config.at("ruz_importer.import_interval_seconds"));
-    if (config.count("retry_attempts")) m_retry_attempts = std::stoi(config.at("retry_attempts"));
-    if (config.count("retry_delay_seconds")) m_retry_delay_seconds = std::stoi(config.at("retry_delay_seconds"));
+    if (config.count("import_interval_seconds")) config_.import_interval_seconds = std::stoi(config.at("import_interval_seconds"));
 
-    LOG_INFO("RUZ_IMPORTER: Configured. Base URL: " + m_api_url);
+    LOG_INFO("RUZ_IMPORTER: Configured. Active universities: " + std::to_string(config_.universities.size()));
 }
 
 RuzImporter::~RuzImporter() {
@@ -75,28 +110,24 @@ RuzImporter::~RuzImporter() {
 void RuzImporter::start() {
     global_importer_instance = this;
     std::signal(SIGINT, signal_handler);
+    std::signal(SIGTERM, signal_handler);
 
     try {
         LOG_INFO("RUZ_Importer: Service initialized. Starting main loop...");
-        m_shutdown = false;
+        shutdown_ = false;
 
         if (m_pg_client) {
             LOG_INFO("RUZ_Importer: Connecting to PostgreSQL...");
             for (int i = 0; i < 20 && !m_pg_client->is_connected(); ++i) {
-                if (m_shutdown) return;
+                if (shutdown_) return;
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
             if (m_pg_client->is_connected()) {
-                LOG_INFO("RUZ_Importer: PostgreSQL connected. Pre-loading rooms...");
-                load_rooms_cache();
+                LOG_INFO("RUZ_Importer: PostgreSQL connected.");
             } else {
                 LOG_ERROR("RUZ_Importer: PostgreSQL NOT connected after timeout.");
             }
         }
-        if (m_nats_client) {
-            LOG_INFO("RUZ_Importer: Connecting to NATS...");
-        }
-
         main_loop();
     } catch (const std::exception& e) {
         LOG_ERROR(std::string("Error in RuzImporter::start: ") + e.what());
@@ -106,314 +137,302 @@ void RuzImporter::start() {
 
 void RuzImporter::shutdown() {
     static bool is_shutdown = false;
+    if (is_shutdown) return;
+    
+    LOG_INFO("RUZ_Importer: Shutting down...");
+    shutdown_ = true;
+    m_shutdown_cv.notify_all(); 
 
-    if (is_shutdown) {
-        LOG_WARN("RUZ_Importer shutdown called multiple times.");
-        return;
+    if (m_pg_client && m_pg_client->is_connected()) {
+        LOG_INFO("Disconnecting from PostgreSQL...");
+        m_pg_client->disconnect();
     }
-
-    try {
-        LOG_INFO("RUZ_Importer: Shutting down...");
-        m_shutdown = true;
-        LOG_INFO("RUZ_Importer: Notifying all waiting threads...");
-        m_shutdown_cv.notify_all(); // Wake up waiting threads
-        LOG_INFO("RUZ_Importer: Notification sent.");
-
-        if (m_pg_client && m_pg_client->is_connected()) {
-            LOG_INFO("Disconnecting from PostgreSQL...");
-            m_pg_client->disconnect();
-        }
-        if (m_nats_client && m_nats_client->is_connected()) {
-            LOG_INFO("Disconnecting from NATS...");
-            m_nats_client->disconnect();
-        }
-        
-        LOG_INFO("RUZ_Importer: Shutdown completed.");
-    } catch (const std::exception& e) {
-        LOG_ERROR(std::string("Error in RuzImporter::shutdown: ") + e.what());
+    if (m_nats_client && m_nats_client->is_connected()) {
+        LOG_INFO("Disconnecting from NATS...");
+        m_nats_client->disconnect();
     }
-
+    
+    LOG_INFO("RUZ_Importer: Shutdown completed.");
     is_shutdown = true;
 }
 
 void RuzImporter::run() {
-    LOG_INFO("RUZ_IMPORTER: Entering main loop...");
-    std::this_thread::sleep_for(std::chrono::seconds(1)); 
-    
-    if (!load_rooms_cache()) {
-        LOG_ERROR("RUZ_IMPORTER: Failed to load rooms cache. Importer might fail to map rooms.");
-    }
-
-    main_loop();
+    start();
 }
 
 void RuzImporter::main_loop() {
-    while (!m_shutdown) {
-        import_cycle();
-        wait_for_next_cycle();
+    while (!shutdown_) {
+        std::vector<std::thread> threads;
+        for (const auto& uni : config_.universities) {
+            threads.emplace_back([this, uni]() {
+                try {
+                    runImportCycle(uni);
+                } catch (const std::exception& e) {
+                    LOG_ERROR("RUZ_IMPORTER: Error in cycle " + uni + ": " + e.what());
+                }
+            });
+        }
+        
+        for (auto& t : threads) {
+            if (t.joinable()) t.join();
+        }
+
+        if (shutdown_) break;
+
+        LOG_INFO("RUZ_IMPORTER: Waiting " + std::to_string(config_.import_interval_seconds) + "s...");
+        std::unique_lock<std::mutex> lock(m_shutdown_mutex);
+        m_shutdown_cv.wait_for(lock, std::chrono::seconds(config_.import_interval_seconds), 
+                               [this]() { return shutdown_.load(); });
     }
 }
 
-void RuzImporter::wait_for_next_cycle() {
-    if (m_shutdown) {
-        LOG_INFO("RUZ_IMPORTER: Shutdown detected, skipping wait.");
+RuzImporter::ImportRange RuzImporter::calcImportRange(const std::string& university_id) {
+    return { get_current_date_string(), get_future_date_string(config_.import_days_ahead) };
+}
+
+void RuzImporter::runImportCycle(const std::string& university_id) {
+    auto parser = ParserFactory::create(university_id);
+    auto range = calcImportRange(university_id);
+    
+    LOG_INFO("RUZ_IMPORTER: Starting cycle for " + university_id + " | " + range.date_from + " -> " + range.date_to);
+    
+    if (university_id == "leti") {
+        auto leti = dynamic_cast<LetiParser*>(parser.get());
+        if (!leti) {
+            LOG_ERROR("Failed to cast to LetiParser");
+            return;
+        }
+        auto records = leti->fetchAll();
+        int64_t saved = saveRecords(university_id, records);
+        LOG_INFO("RUZ_IMPORTER: Cycle OK for leti. Saved: " + std::to_string(saved));
+        syncRoomsAndBuildings(university_id);
+        invalidateCache(university_id);
         return;
     }
-    LOG_INFO("RUZ_IMPORTER: Waiting " + std::to_string(m_import_interval_seconds) + "s...");
     
-    std::unique_lock<std::mutex> lock(m_shutdown_mutex);
-    bool shutdown_signaled = m_shutdown_cv.wait_for(lock, std::chrono::seconds(m_import_interval_seconds), 
-                           [this]() { return m_shutdown.load(); });
+    auto buildings = parser->fetchBuildingList();
+    LOG_INFO(university_id + ": " + std::to_string(buildings.size()) + " buildings found");
     
-    if (shutdown_signaled) {
-        LOG_INFO("RUZ_IMPORTER: Shutdown signal received during wait.");
-    } else {
-        LOG_INFO("RUZ_IMPORTER: Wait timeout, resuming cycle.");
-    }
-}
-
-void RuzImporter::import_cycle() {
-    LOG_INFO("RUZ_IMPORTER: Starting import cycle");
+    int64_t total = 0;
+    int building_idx = 0;
     
-    if (m_rooms_cache.empty()) {
-        LOG_WARN("RUZ_IMPORTER: Cache empty, attempting reload...");
-        load_rooms_cache();
-    }
-
-    auto start = std::chrono::steady_clock::now();
-    
-    bool success = false;
-    for (int i = 0; i < m_retry_attempts && !m_shutdown; ++i) {
-        if (i > 0) {
-            LOG_INFO("Retry " + std::to_string(i + 1) + "/" + std::to_string(m_retry_attempts));
-            std::this_thread::sleep_for(std::chrono::seconds(m_retry_delay_seconds));
+    for (const auto& building : buildings) {
+        if (shutdown_) break;
+        building_idx++;
+        auto all_rooms = parser->fetchRoomList(building.id);
+        for (auto& r : all_rooms) {
+            r.building_name = building.name;
+            r.building_address = building.address;
         }
+        int total_rooms = all_rooms.size();
+        int processed = 0;
         
-        if (fetch_and_process()) {
-            success = true;
-            break;
-        }
-    }
-
-    auto end = std::chrono::steady_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-
-    if (success) {
-        LOG_INFO("RUZ_IMPORTER: Cycle OK. Time: " + std::to_string(ms) + "ms");
-    } else {
-        LOG_ERROR("RUZ_IMPORTER: Cycle FAILED after attempts.");
-    }
-}
-
-bool RuzImporter::load_rooms_cache() {
-    LOG_INFO("RUZ_IMPORTER: Loading rooms cache (synchronous)...");
-
-    std::string conn_str = "host=" + std::string(getenv("POSTGRES_HOST") ? getenv("POSTGRES_HOST") : "postgres") +
-                          " port=" + std::string(getenv("POSTGRES_PORT") ? getenv("POSTGRES_PORT") : "5432") +
-                          " dbname=" + std::string(getenv("POSTGRES_DB") ? getenv("POSTGRES_DB") : "booking_mvp_db") +
-                          " user=" + std::string(getenv("POSTGRES_USER") ? getenv("POSTGRES_USER") : "postgres") +
-                          " password=" + std::string(getenv("POSTGRES_PASSWORD") ? getenv("POSTGRES_PASSWORD") : "password");
-
-    PGconn* conn = PQconnectdb(conn_str.c_str());
-    if (PQstatus(conn) != CONNECTION_OK) {
-        LOG_ERROR(std::string("RUZ_IMPORTER: Sync connection failed: ") + PQerrorMessage(conn));
-        PQfinish(conn);
-        return false;
-    }
-
-    PGresult* res = PQexec(conn, "SELECT id, code, ruz_id, building_ruz_id FROM rooms WHERE ruz_id IS NOT NULL");
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-        LOG_ERROR(std::string("RUZ_IMPORTER: Sync query failed: ") + PQerrorMessage(conn));
-        PQclear(res);
-        PQfinish(conn);
-        return false;
-    }
-
-    int rows = PQntuples(res);
-    m_rooms_cache.clear();
-    for (int i = 0; i < rows; ++i) {
-        std::string uuid = PQgetvalue(res, i, 0);
-        std::string code = PQgetvalue(res, i, 1);
-        int rid = std::stoi(PQgetvalue(res, i, 2));
-        int bid = std::stoi(PQgetvalue(res, i, 3));
-        
-        m_rooms_cache[code] = {uuid, rid, bid};
-    }
-
-    LOG_INFO("RUZ_IMPORTER: Loaded " + std::to_string(m_rooms_cache.size()) + " rooms from DB with RUZ IDs.");
-
-    PQclear(res);
-    PQfinish(conn);
-    return true;
-}
-
-
-bool RuzImporter::fetch_and_process() {
-    HttpClient http;
-    DataProcessor proc;
-    std::string current_date = get_current_date_string();
-    std::vector<Lesson> all_valid_lessons;
-    
-    int total_rooms = m_rooms_cache.size();
-    int current_idx = 0;
-    int rooms_with_data = 0;
-
-    LOG_INFO("RUZ_IMPORTER: Starting fetch for " + std::to_string(total_rooms) + " rooms.");
-
-    for (const auto& [room_code, info] : m_rooms_cache) {
-        current_idx++;
-        if (m_shutdown) break;
-
-        // Correct URL format: /buildings/{bid}/rooms/{rid}/scheduler
-        std::string url = m_api_url + "/buildings/" + std::to_string(info.building_ruz_id) + 
-                          "/rooms/" + std::to_string(info.ruz_id) + "/scheduler?date=" + current_date;
-
-        std::string json = http.fetch_ruz_data(url);
-        
-        if (json.empty()) {
-            LOG_WARN("Room " + std::to_string(current_idx) + "/" + std::to_string(total_rooms) + 
-                     ": Empty response for " + room_code);
-            continue;
-        }
-
-        std::vector<Lesson> lessons = proc.parse_and_transform(json);
-        
-        if (!lessons.empty()) {
-            rooms_with_data++;
-            for (auto& l : lessons) {
-                l.room_id = info.uuid; 
-                l.hash = l.compute_hash(); 
-                all_valid_lessons.push_back(l);
-            }
-        }
-
-        if (current_idx % 50 == 0 || current_idx == total_rooms) {
-            LOG_INFO("Progress: " + std::to_string(current_idx) + "/" + std::to_string(total_rooms) + 
-                     " rooms processed. Lessons found: " + std::to_string(all_valid_lessons.size()));
-        }
-        
-        // Rate limiting to prevent 429 errors
-        std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    }
-
-    LOG_INFO("Fetched data for " + std::to_string(rooms_with_data) + " rooms. Total lessons: " + std::to_string(all_valid_lessons.size()));
-
-    if (all_valid_lessons.empty()) {
-        LOG_WARN("No lessons found for any room.");
-        return true;
-    }
-
-    try {
-        if (!save_lessons_to_db(all_valid_lessons)) return false;
-        if (!sync_deletions(all_valid_lessons)) return false;
-
-        send_notification();
-        return true;
-
-    } catch (const std::exception& e) {
-        LOG_ERROR(std::string("Exception in DB save/sync: ") + e.what());
-        return false;
-    }
-}
-
-bool RuzImporter::save_lessons_to_db(const std::vector<Lesson>& lessons) {
-    if (lessons.empty()) return true;
-
-    const size_t BATCH_SIZE = 500;
-    for (size_t i = 0; i < lessons.size(); i += BATCH_SIZE) {
-        size_t end = std::min(i + BATCH_SIZE, lessons.size());
-        
-        std::stringstream sql;
-        std::vector<std::string> params;
-        
-        sql << "INSERT INTO schedules_import (room_id, starts_at, ends_at, source, hash, metadata) ";
-        sql << "SELECT v.rid::uuid, v.start::timestamptz, v.end_::timestamptz, v.src, v.h, v.meta::jsonb ";
-        sql << "FROM (VALUES ";
-        
-        int p_idx = 1;
-        for (size_t j = i; j < end; ++j) {
-            if (j > i) sql << ",";
-            sql << "($" << p_idx++ << ", $" << p_idx++ << ", $" << p_idx++ << ", 'ruz', $" << p_idx++ << ", $" << p_idx++ << "::jsonb)";
+        for (int i = 0; i < total_rooms && !shutdown_; i += config_.room_batch_size) {
+            int end = std::min(i + config_.room_batch_size, total_rooms);
             
-            params.push_back(lessons[j].room_id);
-            params.push_back(lessons[j].starts_at);
-            params.push_back(lessons[j].ends_at);
-            params.push_back(lessons[j].hash);
-            params.push_back(lessons[j].get_metadata_json());
-        }
-        
-        sql << ") AS v(rid, start, end_, src, h, meta) ";
-        sql << "WHERE NOT EXISTS (SELECT 1 FROM schedules_import s WHERE s.hash = v.h)";
-
-        auto cb = std::make_unique<SyncGenericCb>();
-        auto fut = cb->promise.get_future();
-        
-        m_pg_client->execute(sql.str(), params, std::move(cb));
-        
-        if (fut.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-             LOG_ERROR("DB Timeout inserting batch");
-             return false;
-        }
-
-        auto res = fut.get();
-        if (!res.first) {
-            LOG_ERROR("DB Insert Error: " + res.second);
-            return false;
+            for (int j = i; j < end && !shutdown_; j++) {
+                const auto& room = all_rooms[j];
+                
+                if (config_.full_sync_on_empty && isRoomImported(university_id, room.id)) {
+                    processed++;
+                    continue;
+                }
+                
+                try {
+                    auto records = parser->fetchRoomSchedule(room, range.date_from, range.date_to);
+                    int64_t saved = saveRecords(university_id, records);
+                    total += saved;
+                    processed++;
+                } catch (const std::exception& e) {
+                    LOG_WARN(university_id + ": room " + room.id + " failed: " + e.what());
+                }
+                
+                std::this_thread::sleep_for(std::chrono::milliseconds(config_.rate_limit_ms));
+            }
+            LOG_INFO(university_id + ": building " + std::to_string(building_idx) + "/" + std::to_string(buildings.size()) + " | rooms " + std::to_string(processed) + "/" + std::to_string(total_rooms) + " | records: " + std::to_string(total));
         }
     }
-    LOG_INFO("Saved/Updated " + std::to_string(lessons.size()) + " lessons.");
-    return true;
+    LOG_INFO("RUZ_IMPORTER: Cycle OK for " + university_id + ". Saved: " + std::to_string(total));
+    syncRoomsAndBuildings(university_id);
+    invalidateCache(university_id);
 }
 
-bool RuzImporter::sync_deletions(const std::vector<Lesson>& lessons) {
-    if (lessons.empty()) return true;
+bool RuzImporter::isRoomImported(const std::string& uni_id, const std::string& room_id) {
+    // В MVP всегда возвращаем false, чтобы сделать full scan
+    return false;
+}
 
-    std::string min_time = lessons[0].starts_at;
-    std::string max_time = lessons[0].ends_at;
+std::string RuzImporter::computeHash(const ScheduleRecord& r) {
+    std::string date = r.starts_at.length() >= 10 ? r.starts_at.substr(0, 10) : "";
+    std::string time = r.starts_at.length() > 10 ? r.starts_at.substr(11, 5) : "";
+    std::string input = r.university_id + r.subject + date + time + r.ruz_room_id + r.teacher;
+    return sha256(input);
+}
 
-    for (const auto& l : lessons) {
-        if (l.starts_at < min_time) min_time = l.starts_at;
-        if (l.ends_at > max_time) max_time = l.ends_at;
-    }
-
-    std::stringstream ss_hashes;
-    ss_hashes << "{";
-    for (size_t i = 0; i < lessons.size(); ++i) {
-        if (i > 0) ss_hashes << ",";
-        ss_hashes << lessons[i].hash;
-    }
-    ss_hashes << "}";
+int64_t RuzImporter::saveRecords(const std::string& university_id, std::vector<ScheduleRecord>& records) {
+    if (records.empty()) return 0;
     
-    std::string sql = 
-        "DELETE FROM schedules_import "
-        "WHERE source = 'ruz' "
-        "AND starts_at >= $1::timestamptz "
-        "AND ends_at <= $2::timestamptz "
-        "AND NOT (hash = ANY($3::text[]))"; 
+    int64_t total = 0;
+    std::vector<ScheduleRecord> buf;
+    buf.reserve(config_.insert_batch_size);
+    
+    for (auto& r : records) {
+        r.university_id = university_id;
+        r.data_hash = computeHash(r);
+        buf.push_back(std::move(r));
+        
+        if (buf.size() >= (size_t)config_.insert_batch_size) {
+            insertBatch(buf);
+            total += buf.size();
+            buf.clear();
+        }
+    }
+    
+    if (!buf.empty()) {
+        insertBatch(buf);
+        total += buf.size();
+    }
+    
+    return total;
+}
 
-    std::vector<std::string> params = { min_time, max_time, ss_hashes.str() };
+void RuzImporter::insertBatch(const std::vector<ScheduleRecord>& buf) {
+    if (buf.empty()) return;
+
+    std::stringstream sql;
+    std::vector<std::string> params;
+    
+    sql << "INSERT INTO schedules_import (university_id, subject, teacher, starts_at, ends_at, data_hash, raw_source, ruz_room_id, room_name, ruz_building_id, building_name, building_address, source, hash) VALUES ";
+    
+    for (size_t i = 0; i < buf.size(); ++i) {
+        int p = i * 14 + 1;
+        if (i > 0) sql << ",";
+        sql << "($" << p << ",$" << p+1 << ",$" << p+2 << ",$" << p+3 << "::timestamptz,$" << p+4 << "::timestamptz,$" << p+5 << ",$" << p+6 << "::jsonb, $" << p+7 << ", $" << p+8 << ", $" << p+9 << ", $" << p+10 << ", $" << p+11 << ", $" << p+12 << ", $" << p+13 << ")";
+        
+        params.push_back(buf[i].university_id);
+        params.push_back(buf[i].subject);
+        params.push_back(buf[i].teacher);
+        params.push_back(buf[i].starts_at);
+        params.push_back(buf[i].ends_at);
+        params.push_back(buf[i].data_hash);
+        params.push_back(buf[i].raw_json.empty() ? "{}" : buf[i].raw_json);
+        params.push_back(buf[i].ruz_room_id);   
+        params.push_back(buf[i].room_name); 
+        params.push_back(buf[i].ruz_building_id);
+        params.push_back(buf[i].building_name);
+        params.push_back(buf[i].building_address);
+        params.push_back(buf[i].university_id); // source
+        params.push_back(buf[i].data_hash);     // hash
+    }
+    
+    sql << " ON CONFLICT (university_id, data_hash) DO NOTHING";
 
     auto cb = std::make_unique<SyncGenericCb>();
     auto fut = cb->promise.get_future();
-
-    m_pg_client->execute(sql, params, std::move(cb));
-
-    if (fut.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-         LOG_ERROR("DB Timeout syncing deletions");
-         return false;
-    }
-
+    
+    m_pg_client->execute(sql.str(), params, std::move(cb));
     auto res = fut.get();
     if (!res.first) {
-        LOG_ERROR("DB Deletion Sync Error: " + res.second);
-        return false;
+        LOG_ERROR("RuzImporter: DB Insert failed: " + res.second);
     }
-
-    LOG_INFO("Sync (Cleanup) completed for range " + min_time + " - " + max_time);
-    return true;
 }
 
-void RuzImporter::send_notification() {
-    m_nats_client->publish("events.schedule_refreshed", "{\"event\": \"full_refresh\"}");
-    LOG_INFO("Sent NATS notification");
+void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
+    LOG_INFO("RUZ_IMPORTER: Syncing rooms/buildings for " + university_id + "...");
+
+    // Step 1: UPSERT buildings from schedules_import
+    // We use COALESCE(building_name, ruz_building_id) for name if name is missing
+    m_pg_client->execute(R"(
+        INSERT INTO buildings (id, university_id, ruz_id, name, address, code)
+        SELECT
+            uuid_generate_v4(),
+            university_id,
+            ruz_building_id,
+            COALESCE(NULLIF(building_name, ''), 'Building ' || ruz_building_id),
+            COALESCE(building_address, ''),
+            'BUILDING_' || university_id || '_' || ruz_building_id
+        FROM (
+            SELECT DISTINCT
+                university_id,
+                ruz_building_id,
+                building_name,
+                building_address
+            FROM schedules_import
+            WHERE university_id = $1
+              AND ruz_building_id IS NOT NULL
+              AND ruz_building_id != ''
+        ) sub
+        ON CONFLICT (ruz_id, university_id)
+        DO UPDATE SET
+            name = EXCLUDED.name,
+            address = EXCLUDED.address,
+            updated_at = now()
+    )", {university_id}, std::make_unique<SyncGenericCb>());
+
+    // Step 2: UPSERT rooms from schedules_import
+    m_pg_client->execute(R"(
+        INSERT INTO rooms (id, university_id, building_id, ruz_id, name, code, capacity)
+        SELECT
+            uuid_generate_v4(),
+            si.university_id,
+            b.id,
+            si.ruz_room_id,
+            COALESCE(NULLIF(si.room_name, ''), 'Room ' || si.ruz_room_id),
+            'ROOM_' || si.university_id || '_' || si.ruz_room_id,
+            30
+        FROM (
+            SELECT DISTINCT
+                university_id,
+                ruz_room_id,
+                room_name,
+                ruz_building_id
+            FROM schedules_import
+            WHERE university_id = $1
+              AND ruz_room_id IS NOT NULL
+              AND ruz_room_id != ''
+        ) si
+        LEFT JOIN buildings b 
+            ON b.ruz_id = si.ruz_building_id 
+           AND b.university_id = si.university_id
+        ON CONFLICT (ruz_id, university_id)
+        DO UPDATE SET
+            name = EXCLUDED.name,
+            building_id = EXCLUDED.building_id,
+            updated_at = now()
+    )", {university_id}, std::make_unique<SyncGenericCb>());
+
+    // Step 3: Link room_id in schedules_import
+    m_pg_client->execute(R"(
+        UPDATE schedules_import si
+        SET room_id = r.id
+        FROM rooms r
+        WHERE r.ruz_id = si.ruz_room_id
+          AND r.university_id = si.university_id
+          AND si.university_id = $1
+          AND si.room_id IS NULL
+    )", {university_id}, std::make_unique<SyncGenericCb>());
+
+    LOG_INFO("RUZ_IMPORTER: Sync completed for " + university_id);
+}
+
+void RuzImporter::invalidateCache(const std::string& university_id) {
+    if (!m_redis_client) return;
+    
+    LOG_INFO("RUZ_IMPORTER: Invalidating Redis cache for " + university_id);
+    
+    // Invalidate global lists
+    m_redis_client->del("rooms:all", std::make_unique<RedisCallbackImpl>([](redisReply* reply) {
+        if (!reply) LOG_WARN("Redis del rooms:all failed");
+    }));
+    m_redis_client->del("buildings:all", std::make_unique<RedisCallbackImpl>([](redisReply* reply) {
+        if (!reply) LOG_WARN("Redis del buildings:all failed");
+    }));
+    
+    // Invalidate university-specific lists (if any)
+    m_redis_client->del("rooms:" + university_id, std::make_unique<RedisCallbackImpl>([university_id](redisReply* reply) {
+        if (!reply) LOG_WARN("Redis del rooms:" + university_id + " failed");
+    }));
+    m_redis_client->del("buildings:" + university_id, std::make_unique<RedisCallbackImpl>([university_id](redisReply* reply) {
+        if (!reply) LOG_WARN("Redis del buildings:" + university_id + " failed");
+    }));
 }

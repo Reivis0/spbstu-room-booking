@@ -1,14 +1,14 @@
 INSERT INTO buildings (id, university_id, code, name, address) VALUES
   (uuid_generate_v4(),
-   (SELECT id FROM universities WHERE code='SPBGU'),
+   (SELECT id FROM universities WHERE id='spbgu'),
    'SPBGU-MEN', 'Менделеевская линия',
    'Университетская наб., 7–9, Санкт-Петербург'),
   (uuid_generate_v4(),
-   (SELECT id FROM universities WHERE code='SPBGU'),
+   (SELECT id FROM universities WHERE id='spbgu'),
    'SPBGU-HIST', 'Исторический факультет',
    'Менделеевская линия, 5, Санкт-Петербург'),
   (uuid_generate_v4(),
-   (SELECT id FROM universities WHERE code='SPBGU'),
+   (SELECT id FROM universities WHERE id='spbgu'),
    'SPBGU-PHIL', 'Философский факультет',
    'Менделеевская линия, 5, Санкт-Петербург')
 ON CONFLICT (code) DO NOTHING;
@@ -49,15 +49,15 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO buildings (id, university_id, code, name, address) VALUES
   (uuid_generate_v4(),
-   (SELECT id FROM universities WHERE code='LETI'),
+   (SELECT id FROM universities WHERE id='leti'),
    'LETI-MAIN', 'Главный корпус ЛЭТИ',
    '5-я линия В.О., 14, Санкт-Петербург'),
   (uuid_generate_v4(),
-   (SELECT id FROM universities WHERE code='LETI'),
+   (SELECT id FROM universities WHERE id='leti'),
    'LETI-CORP2', 'Корпус 2',
    'ул. Профессора Попова, 5, Санкт-Петербург'),
   (uuid_generate_v4(),
-   (SELECT id FROM universities WHERE code='LETI'),
+   (SELECT id FROM universities WHERE id='leti'),
    'LETI-CORP3', 'Корпус 3 (Лабораторный)',
    'ул. Профессора Попова, 5, Санкт-Петербург')
 ON CONFLICT (code) DO NOTHING;

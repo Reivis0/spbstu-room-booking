@@ -15,6 +15,9 @@ add_executable(ruz_importer
     src/http_client.cpp
     src/data_processor.cpp
     src/config.cpp
+    src/spbptu_parser.cpp
+    src/spbgu_parser.cpp
+    src/leti_parser.cpp
 )
 
 target_compile_definitions(ruz_importer PRIVATE
@@ -40,6 +43,8 @@ target_link_libraries(ruz_importer PRIVATE
     ssl
     crypto
     dl
+    event
+    event_pthreads
 )
 
 set_target_properties(ruz_importer PROPERTIES

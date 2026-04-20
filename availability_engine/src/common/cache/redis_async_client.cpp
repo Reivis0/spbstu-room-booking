@@ -350,6 +350,28 @@ void RedisAsyncClient::get(const std::string& key, std::unique_ptr<IRedisCallbac
     redisAsyncCommand(m_connector.context, genericCallback, raw, "GET %s", key.c_str());
 }
 
+void RedisAsyncClient::del(const std::string& key, std::unique_ptr<IRedisCallback> cb)
+{
+    if(!is_connected())
+    {
+        if(cb)
+        {
+            try { cb->onRedisReply(nullptr); } catch(...) {}
+        }
+        return;
+    }
+    if (!cb) {
+        redisAsyncCommand(m_connector.context, nullptr, nullptr, "DEL %s", key.c_str());
+        return;
+    }
+    IRedisCallback* raw = cb.get();
+    {
+        std::lock_guard<std::mutex> lock(m_pending_mutex);
+        m_pending_callbacks.emplace(raw, std::move(cb));
+    }
+    redisAsyncCommand(m_connector.context, genericCallback, raw, "DEL %s", key.c_str());
+}
+
 void RedisAsyncClient::setex(const std::string& key, int ttl_seconds, const std::string& value, std::unique_ptr<IRedisCallback> cb)
 {
     if(!is_connected())

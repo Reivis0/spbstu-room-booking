@@ -1,70 +1,111 @@
-find_package(Threads REQUIRED)
-find_package(CURL REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(JSONCPP REQUIRED jsoncpp)
-pkg_check_modules(POSTGRESQL REQUIRED libpq)
+cmake_minimum_required(VERSION 3.15)
 
-add_executable(test_availability
+project(availability_engine_tests)
+
+find_package(PkgConfig REQUIRED)
+find_package(GTest REQUIRED)
+
+pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+pkg_check_modules(LIBEVENT REQUIRED libevent)
+find_package(CURL REQUIRED)
+
+include_directories(
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/log
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/include
+)
+
+# Test for AvailabilityEngine
+add_executable(test_availability_engine
     test_availability_engine.cpp
 )
 
-target_include_directories(test_availability PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src/common
-    ${CMAKE_SOURCE_DIR}/src/availability_engine/include
+target_link_libraries(test_availability_engine PRIVATE
+    GTest::gtest_main
 )
 
-target_sources(test_availability PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/availability_engine/src/async_room_service.cpp
+# Test for PostgreSQL Async Client
+add_executable(test_postgresql_async_client
+    test_postgresql_async_client.cpp
 )
 
-target_link_libraries(test_availability PRIVATE
+target_link_libraries(test_postgresql_async_client PRIVATE
+    GTest::gtest_main
     common_lib
-    Threads::Threads
+)
+
+# Test for PostgreSQL Connection Pool
+add_executable(test_postgresql_connection_pool
+    test_postgresql_connection_pool.cpp
+)
+
+target_link_libraries(test_postgresql_connection_pool PRIVATE
+    GTest::gtest_main
+    common_lib
+)
+
+# Test for Redis Async Client
+add_executable(test_redis_async_client
+    test_redis_async_client.cpp
+)
+
+target_link_libraries(test_redis_async_client PRIVATE
+    GTest::gtest_main
+    common_lib
     ${LIBEVENT_LIBRARIES}
-    gtest
-    gtest_main
 )
 
-set_target_properties(test_availability PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+# Test for NATS Client
+add_executable(test_nats_client
+    test_nats_client.cpp
 )
 
-# Test for RuzImporter
+target_link_libraries(test_nats_client PRIVATE
+    GTest::gtest_main
+    common_lib
+)
+
+# Test for RUZ Importer
 add_executable(test_ruz_importer
     test_ruz_importer.cpp
 )
 
-target_include_directories(test_ruz_importer PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src/common
-    ${CMAKE_SOURCE_DIR}/src/ruz_importer/include
-    ${CURL_INCLUDE_DIRS}
-    ${JSONCPP_INCLUDE_DIRS}
-    ${POSTGRESQL_INCLUDE_DIRS}
-)
-
-target_sources(test_ruz_importer PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/ruz_importer.cpp
-    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/config.cpp
-    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/http_client.cpp
-    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/data_processor.cpp
-)
-
 target_link_libraries(test_ruz_importer PRIVATE
+    GTest::gtest_main
     common_lib
+)
+
+# Test for RuzImporter Parsers
+add_executable(test_parsers
+    test_parsers.cpp
+)
+
+target_include_directories(test_parsers PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/include
+)
+
+target_sources(test_parsers PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/spbptu_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/spbgu_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/leti_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/http_client.cpp
+)
+
+target_link_libraries(test_parsers PRIVATE
     logger_lib
-    Threads::Threads
-    ${CURL_LIBRARIES}
     ${JSONCPP_LIBRARIES}
-    ${POSTGRESQL_LIBRARIES}
-    gtest
-    gtest_main
+    ${CURL_LIBRARIES}
+    GTest::gtest_main
     ssl
     crypto
     dl
 )
 
-set_target_properties(test_ruz_importer PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
+# Add all tests to ctest
+add_test(NAME AvailabilityEngineTest COMMAND test_availability_engine)
+add_test(NAME PostgreSQLAsyncClientTest COMMAND test_postgresql_async_client)
+add_test(NAME PostgreSQLConnectionPoolTest COMMAND test_postgresql_connection_pool)
+add_test(NAME RedisAsyncClientTest COMMAND test_redis_async_client)
+add_test(NAME NATSClientTest COMMAND test_nats_client)
+add_test(NAME RuzImporterTest COMMAND test_ruz_importer)
+add_test(NAME RuzParsersTest COMMAND test_parsers)

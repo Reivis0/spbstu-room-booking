@@ -1,5 +1,6 @@
 package com.github.MadyarovGleb.booking_mvp.controller;
 
+import com.github.MadyarovGleb.booking_mvp.dto.RoomScheduleResponse;
 import com.github.MadyarovGleb.booking_mvp.entity.Room;
 import com.github.MadyarovGleb.booking_mvp.service.RoomService;
 import org.slf4j.Logger;
@@ -68,5 +69,17 @@ public class RoomController {
         var slots = roomService.getAvailability(id, date, min_duration);
         logger.info("Room availability request completed successfully slots_count={}", slots.size());
         return ResponseEntity.ok(slots);
+    }
+
+    @GetMapping("/{id}/schedule")
+    public ResponseEntity<RoomScheduleResponse> getSchedule(
+            @PathVariable UUID id,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date
+    ) {
+        MDC.put("room_id", id.toString());
+        logger.info("Room schedule request started roomId={} date={}", id, date);
+        RoomScheduleResponse schedule = roomService.getRoomSchedule(id, date);
+        logger.info("Room schedule request completed successfully");
+        return ResponseEntity.ok(schedule);
     }
 }

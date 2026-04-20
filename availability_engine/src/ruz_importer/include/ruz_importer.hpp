@@ -10,12 +10,28 @@
 #include <condition_variable>
 #include "database/postgreSQL_async_client.hpp"
 #include "messaging/nats_async_client.hpp"
+#include "cache/redis_async_client.hpp"
 #include "lesson.hpp" 
+
+#include "university_parser.hpp"
+#include "parser_factory.hpp"
+
+struct ImportConfig {
+    int room_batch_size = 10;
+    int insert_batch_size = 200;
+    int rate_limit_ms = 100;
+    int week_step_days = 7;
+    int import_days_ahead = 180;
+    bool full_sync_on_empty = true;
+    int import_interval_seconds = 1800;
+    std::vector<std::string> universities;
+};
 
 class RuzImporter {
 public:
     RuzImporter(std::shared_ptr<PostgreSQLAsyncClient> pg_client,
-                std::shared_ptr<NatsAsyncClient> nats_client);
+                std::shared_ptr<NatsAsyncClient> nats_client,
+                std::shared_ptr<RedisAsyncClient> redis_client);
     ~RuzImporter();
 
     void run();
@@ -24,35 +40,29 @@ public:
 
 private:
     void main_loop();
-    void import_cycle();
-    bool fetch_and_process();
-    void wait_for_next_cycle();
-    
-    bool load_rooms_cache();
-    bool save_lessons_to_db(const std::vector<Lesson>& lessons);
-    bool sync_deletions(const std::vector<Lesson>& lessons);
-    
-    void send_notification();
+    void runImportCycle(const std::string& university_id);
+    int64_t saveRecords(const std::string& university_id, std::vector<ScheduleRecord>& records);
+    std::string computeHash(const ScheduleRecord& r);
+    bool isRoomImported(const std::string& uni_id, const std::string& room_id);
+    void insertBatch(const std::vector<ScheduleRecord>& buf);
+    void syncRoomsAndBuildings(const std::string& university_id);
+    void invalidateCache(const std::string& university_id);
+
+    struct ImportRange {
+        std::string date_from;
+        std::string date_to;
+    };
+    ImportRange calcImportRange(const std::string& university_id);
 
     std::shared_ptr<PostgreSQLAsyncClient> m_pg_client;
     std::shared_ptr<NatsAsyncClient> m_nats_client;
+    std::shared_ptr<RedisAsyncClient> m_redis_client;
     
-    std::atomic<bool> m_shutdown{false};
+    std::atomic<bool> shutdown_{false};
     std::mutex m_shutdown_mutex;
     std::condition_variable m_shutdown_cv;
     
-    std::string m_api_url;
-    int m_import_interval_seconds{1800};
-    int m_retry_attempts{3};
-    int m_retry_delay_seconds{5};
-
-    struct RoomInfo {
-        std::string uuid;
-        int ruz_id;
-        int building_ruz_id;
-    };
-
-    std::map<std::string, RoomInfo> m_rooms_cache;
+    ImportConfig config_;
 };
 
 #endif

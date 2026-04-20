@@ -43,6 +43,8 @@ private:
     
     std::unique_ptr<grpc::Server> server_;
     std::atomic<bool> is_running_{false};
+
+    std::thread redis_thread_;
 };
 
 #endif

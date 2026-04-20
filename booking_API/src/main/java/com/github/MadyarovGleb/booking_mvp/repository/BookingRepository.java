@@ -13,6 +13,9 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     @Query("select b from Booking b where b.roomId = :roomId and b.status in ('pending','confirmed') and not (b.endsAt <= :startsAt or b.startsAt >= :endsAt)")
     List<Booking> findConflicts(@Param("roomId") UUID roomId, @Param("startsAt") OffsetDateTime startsAt, @Param("endsAt") OffsetDateTime endsAt);
 
+    @Query("select b from Booking b where b.roomId = :roomId and b.startsAt >= :from and b.startsAt < :to and b.status in ('pending', 'confirmed')")
+    List<Booking> findInInterval(@Param("roomId") UUID roomId, @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
     List<Booking> findByUserId(UUID userId);
 
     @Query("select count(b) from Booking b where b.userId = :userId and b.status in ('pending','confirmed') and b.startsAt >= :from")

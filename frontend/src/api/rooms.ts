@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { Room, Building } from '../types';
+import { Room, Building, RoomSchedule } from '../types';
 
 export interface AvailabilityResponse {
   roomId: string;
@@ -57,6 +57,16 @@ export const roomsApi = {
       ...room,
       equipment,
     };
+  },
+
+  getSchedule: async (roomId: string, date: string): Promise<RoomSchedule> => {
+    const response = await apiClient.get<RoomSchedule>(
+      `/rooms/${roomId}/schedule`,
+      {
+        params: { date },
+      }
+    );
+    return response.data;
   },
 
   getAvailability: async (roomId: string, date: string): Promise<AvailabilityResponse> => {
