@@ -44,9 +44,9 @@ const RoomsPage: React.FC = () => {
   });
 
   const buildings = useMemo(() => {
-    const data = buildingsQuery.data || [];
-    return data.filter((building: Building) => getBuildingUniversity(building, universityCode) === universityCode);
-  }, [buildingsQuery.data, universityCode]);
+    // Backend already filters by university, no need for client-side filtering
+    return buildingsQuery.data || [];
+  }, [buildingsQuery.data]);
 
   const rooms = useMemo(() => {
     const buildingsMap = new Map((buildingsQuery.data || []).map((building: Building) => [building.id, building]));
@@ -63,13 +63,13 @@ const RoomsPage: React.FC = () => {
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((room: Room) => {
-      if (getRoomUniversity(room, universityCode) !== universityCode) return false;
+      // Backend already filters by university, only apply client-side filters
       if (buildingFilter && room.buildingId !== buildingFilter && room.building !== buildingFilter) return false;
       if (floorFilter && room.floor && room.floor.toString() !== floorFilter) return false;
       if (capacityFilter && room.capacity < parseInt(capacityFilter, 10)) return false;
       return true;
     });
-  }, [buildingFilter, capacityFilter, floorFilter, rooms, universityCode]);
+  }, [buildingFilter, capacityFilter, floorFilter, rooms]);
 
   const uniqueBuildingNames = Array.from(new Set(filteredRooms.map((room: Room) => room.building))).filter(Boolean);
   const floors = Array.from(

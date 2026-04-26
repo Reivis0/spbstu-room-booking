@@ -183,10 +183,8 @@ export const roomsApi = {
       const data = response.data;
       const buildingsArray = (data as any).content ? (data as any).content : (Array.isArray(data) ? data : []);
       const buildings = buildingsArray.map((building: Building) => enrichBuilding(building));
-      if (!university) {
-        return buildings;
-      }
-      return buildings.filter((building: Building) => building.universityCode === university);
+      // Backend already filters by university, no need for client-side filtering
+      return buildings;
     } catch (error) {
       if (university && shouldUseCatalogFallback(error)) {
         return mockBuildings[university];
