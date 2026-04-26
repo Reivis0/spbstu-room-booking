@@ -56,10 +56,10 @@ export const options = {
 };
 
 const ROOM_IDS = [
-    'c9cf25f2-1e4f-44b2-a789-4875d562d12b',
-    'f5b5c395-1d00-4ae7-894a-629fba0b3d1e',
-    '30e37299-bef3-499d-a27f-fac5e3c4df56',
-    'd0adb1d5-7706-4922-9902-652d4faa8d8b'
+    'd0a69695-5152-4ab3-8cdc-1130366d44b2',
+    'a08802e5-3132-4213-b94e-501d1b1a2216',
+    '1a7a2b15-88b0-4b72-9239-64479595c712',
+    'ce3f20c2-0737-4c5a-a7ab-b48d6af63e5c'
 ];
 
 const RACE_ROOM_ID = ROOM_IDS[0];

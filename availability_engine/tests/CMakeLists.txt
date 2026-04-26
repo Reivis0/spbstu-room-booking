@@ -101,6 +101,15 @@ target_link_libraries(test_parsers PRIVATE
     dl
 )
 
+# Test for Scheduling Algorithm
+add_executable(test_scheduling_algorithm
+    test_scheduling_algorithm.cpp
+)
+
+target_link_libraries(test_scheduling_algorithm PRIVATE
+    GTest::gtest_main
+)
+
 # Add all tests to ctest
 add_test(NAME AvailabilityEngineTest COMMAND test_availability_engine)
 add_test(NAME PostgreSQLAsyncClientTest COMMAND test_postgresql_async_client)
@@ -109,3 +118,4 @@ add_test(NAME RedisAsyncClientTest COMMAND test_redis_async_client)
 add_test(NAME NATSClientTest COMMAND test_nats_client)
 add_test(NAME RuzImporterTest COMMAND test_ruz_importer)
 add_test(NAME RuzParsersTest COMMAND test_parsers)
+add_test(NAME SchedulingAlgorithmTest COMMAND test_scheduling_algorithm)
