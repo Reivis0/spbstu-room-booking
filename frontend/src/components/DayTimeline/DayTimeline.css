@@ -1,0 +1,155 @@
+.day-timeline {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.day-timeline__days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-x: visible;
+  max-width: 100%;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.day-timeline__day-btn {
+  flex: 0 1 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background-color: var(--background);
+  color: var(--muted);
+  transition: all 0.2s ease;
+  border: 1px solid var(--border);
+}
+
+.day-timeline__day-btn:hover {
+  background-color: #e7f6ed;
+  color: var(--primary-dark);
+}
+
+.day-timeline__day-btn--active {
+  background-color: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.day-timeline__day-btn--active:hover {
+  background-color: var(--primary-dark);
+  color: #fff;
+}
+
+.day-timeline__bar-container {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #f1fbf4;
+  border: 1px solid var(--border);
+}
+
+.day-timeline__slot {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  transition: opacity 0.2s ease;
+}
+
+.day-timeline__slot--occupied-schedule {
+  background-color: #ff8a80;
+  opacity: 0.8;
+}
+
+.day-timeline__slot--occupied-booking {
+  background-color: #4fc3f7;
+  opacity: 0.8;
+}
+
+.day-timeline__slot--free {
+  background-color: #81c784;
+  opacity: 0.4;
+  cursor: pointer;
+}
+
+.day-timeline__slot:hover {
+  opacity: 1;
+}
+
+.day-timeline__time-labels {
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.day-timeline__legend {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.day-timeline__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  min-width: 0;
+}
+
+.day-timeline__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.day-timeline__dot--schedule { background-color: #ff8a80; }
+.day-timeline__dot--booking { background-color: #4fc3f7; }
+
+.day-timeline__slot-time {
+  font-family: monospace;
+  color: var(--muted);
+  flex: 0 0 76px;
+  white-space: nowrap;
+}
+
+.day-timeline__slot-label {
+  color: var(--text);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.day-timeline__empty {
+  font-size: 0.75rem;
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+.day-timeline__loading {
+  height: 32px;
+  background-color: #f1fbf4;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.day-timeline__error {
+  font-size: 0.75rem;
+  color: #c62828;
+}

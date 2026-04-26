@@ -5,17 +5,22 @@ import { Room, BookingFormData, Building } from '../types';
 import { roomsApi } from '../api/rooms';
 import { bookingsApi } from '../api/bookings';
 import { useAuthStore } from '../store/useAuthStore';
+import UniversitySelect from '../features/university/ui/UniversitySelect';
+import ChainBookingPanel from '../features/booking/ui/ChainBookingPanel';
+import { useUniversitySearchParam } from '../shared/university/useUniversitySearchParam';
 
 const BookingPage: React.FC = () => {
   const { roomId } = useParams<{ roomId?: string }>();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+  const { universityCode, setUniversityCode, university } = useUniversitySearchParam();
 
   const [room, setRoom] = useState<Room | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chainMode, setChainMode] = useState(false);
 
   const [formData, setFormData] = useState<BookingFormData>({
     roomId: roomId || '',
@@ -48,14 +53,17 @@ const BookingPage: React.FC = () => {
     return undefined;
   };
 
-  const loadRoom = async () => {
-    if (!roomId) return;
+  const loadRoom = React.useCallback(async () => {
+    if (!roomId) {
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
       const [roomData, buildingsData] = await Promise.all([
         roomsApi.getById(roomId),
-        roomsApi.getBuildings(),
+        roomsApi.getBuildings(universityCode),
       ]);
       
       const foundBuilding = buildingsData.find(b => b.id === roomData.buildingId);
@@ -76,7 +84,7 @@ const BookingPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [roomId, universityCode]);
 
   useEffect(() => {
     if (authLoading) {
@@ -92,8 +100,10 @@ const BookingPage: React.FC = () => {
     if (roomId) {
       loadRoom();
       setFormData((prev) => ({ ...prev, roomId }));
+    } else {
+      setLoading(false);
     }
-  }, [roomId, isAuthenticated, authLoading, navigate]);
+  }, [roomId, isAuthenticated, authLoading, navigate, loadRoom]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,6 +175,8 @@ const BookingPage: React.FC = () => {
             <div className="room-summary">
               <h2>{room.name}</h2>
               <p>
+                {university.label}
+                {' • '}
                 {room.building || building?.name || 'Неизвестное здание'}
                 {room.floor && ` • ${room.floor} этаж`}
                 {` • Вместимость: ${room.capacity} мест`}
@@ -173,8 +185,16 @@ const BookingPage: React.FC = () => {
           )}
         </div>
 
+        <div className="booking-page__layout">
         <form onSubmit={handleSubmit} className="booking-form">
         {error && <div className="error">{error}</div>}
+
+        <UniversitySelect
+          id="booking-university"
+          label="Вуз"
+          value={universityCode}
+          onChange={setUniversityCode}
+        />
 
         {!roomId && (
           <div className="form-group">
@@ -227,6 +247,15 @@ const BookingPage: React.FC = () => {
           />
         </div>
 
+        <label className="booking-form__chain-toggle">
+          <input
+            type="checkbox"
+            checked={chainMode}
+            onChange={(event) => setChainMode(event.target.checked)}
+          />
+          <span>Создать цепочку смежных бронирований</span>
+        </label>
+
         <div className="form-actions">
           <button
             type="button"
@@ -244,10 +273,20 @@ const BookingPage: React.FC = () => {
           </button>
         </div>
       </form>
+      {chainMode && (
+        <ChainBookingPanel
+          university={universityCode}
+          room={room}
+          startsAt={formData.startTime}
+          endsAt={formData.endTime}
+          purpose={formData.purpose || formData.title}
+          onCreated={() => navigate('/my-bookings')}
+        />
+      )}
+      </div>
       </div>
     </section>
   );
 };
 
 export default BookingPage;
-

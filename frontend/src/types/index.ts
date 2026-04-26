@@ -1,8 +1,16 @@
+import { UniversityCode } from '../shared/university/universities';
+
+export type RoomAvailabilityStatus = 'free' | 'busy' | 'unknown';
+
 export interface Building {
   id: string;
   code: string;
   name: string;
   address: string;
+  universityId?: string;
+  university_id?: string;
+  university?: UniversityCode | string;
+  universityCode?: UniversityCode | string;
 }
 
 export interface Room {
@@ -15,10 +23,18 @@ export interface Room {
   title?: string;
   floor?: number;
   building?: string;
+  building_id?: string;
   type?: string;
   equipment?: string[];
   description?: string;
   nextSlots?: string[];
+  universityId?: string;
+  university_id?: string;
+  university?: UniversityCode | string;
+  universityCode?: UniversityCode | string;
+  availabilityStatus?: RoomAvailabilityStatus;
+  nextSlotAt?: string;
+  statusUpdatedAt?: string;
 }
 
 export interface Booking {
@@ -36,6 +52,12 @@ export interface Booking {
   startTime?: Date;
   endTime?: Date;
   purpose?: string;
+  university?: UniversityCode | string;
+  universityCode?: UniversityCode | string;
+  room?: Room;
+  isChain?: boolean;
+  chainId?: string;
+  chainItems?: Booking[];
 }
 
 export interface User {
@@ -68,3 +90,16 @@ export interface ScheduleByFloor {
   [floor: number]: ScheduleRow[];
 }
 
+export interface ScheduleSlot {
+  from: string;
+  to: string;
+  type: 'schedule' | 'booking' | 'free';
+  label: string;
+  status: 'occupied' | 'free';
+}
+
+export interface RoomSchedule {
+  date: string;
+  roomId: string;
+  slots: ScheduleSlot[];
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { Booking } from '../../types';
+import { getUniversity } from '../../shared/university/universities';
 
 interface BookingCardProps {
   booking: Booking;
@@ -42,6 +43,7 @@ const BookingCard: React.FC<BookingCardProps> = ({
   const startTime = booking.startTime || (booking.startsAt ? new Date(booking.startsAt) : new Date());
   const endTime = booking.endTime || (booking.endsAt ? new Date(booking.endsAt) : new Date());
   const createdAt = booking.createdAt ? new Date(booking.createdAt) : undefined;
+  const university = getUniversity(booking.universityCode || booking.university);
 
   const canCancel =
     !readOnly &&
@@ -52,13 +54,19 @@ const BookingCard: React.FC<BookingCardProps> = ({
   return (
     <div className="booking-card">
       <div className="booking-card-header">
-        <h3>{booking.roomName || `Аудитория #${booking.roomId}`}</h3>
-        <span
-          className="booking-status"
-          style={{ color: getStatusColor(booking.status) }}
-        >
-          {getStatusText(booking.status)}
-        </span>
+        <div>
+          <span className="booking-card__university-badge">{university.badgeLabel}</span>
+          <h3>{booking.roomName || `Аудитория #${booking.roomId}`}</h3>
+        </div>
+        <div className="booking-card__status-stack">
+          {booking.isChain && <span className="booking-status booking-status--chain">Цепочка</span>}
+          <span
+            className="booking-status"
+            style={{ color: getStatusColor(booking.status) }}
+          >
+            {getStatusText(booking.status)}
+          </span>
+        </div>
       </div>
 
       <div className="booking-card-info">
@@ -98,4 +106,3 @@ const BookingCard: React.FC<BookingCardProps> = ({
 };
 
 export default BookingCard;
-

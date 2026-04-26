@@ -1,5 +1,17 @@
 import { apiClient } from './client';
 import { Booking, BookingFormData } from '../types';
+import { UniversityCode, getUniversity } from '../shared/university/universities';
+
+export interface ChainBookingRequest {
+  university: UniversityCode;
+  purpose?: string;
+  title?: string;
+  items: Array<{
+    roomId: string;
+    startsAt: string;
+    endsAt: string;
+  }>;
+}
 
 export const bookingsApi = {
   getAll: async (): Promise<Booking[]> => {
@@ -7,8 +19,12 @@ export const bookingsApi = {
     return response.data;
   },
 
-  getMyBookings: async (): Promise<Booking[]> => {
-    const response = await apiClient.get<Booking[]>('/bookings/my');
+  getMyBookings: async (university?: UniversityCode): Promise<Booking[]> => {
+    const response = await apiClient.get<Booking[]>('/bookings/my', {
+      params: {
+        university: university ? getUniversity(university).apiValue : undefined,
+      },
+    });
     return response.data;
   },
 
@@ -17,8 +33,17 @@ export const bookingsApi = {
       roomId: data.roomId,
       startsAt: data.startsAt || data.startTime || '',
       endsAt: data.endsAt || data.endTime || '',
+      title: data.title || data.purpose || undefined,
     };
     const response = await apiClient.post<Booking>('/bookings', requestData);
+    return response.data;
+  },
+
+  createChain: async (data: ChainBookingRequest): Promise<Booking[]> => {
+    const response = await apiClient.post<Booking[]>('/bookings/chain', {
+      ...data,
+      university: getUniversity(data.university).apiValue,
+    });
     return response.data;
   },
 
@@ -26,5 +51,4 @@ export const bookingsApi = {
     await apiClient.delete(`/bookings/${id}`);
   },
 };
-
 

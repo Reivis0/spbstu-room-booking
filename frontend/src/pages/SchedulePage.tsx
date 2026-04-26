@@ -1,74 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import ScheduleTable, { ScheduleRow } from '../components/ScheduleTable/ScheduleTable';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import ScheduleTable from '../components/ScheduleTable/ScheduleTable';
 import EmptyState from '../components/EmptyState/EmptyState';
 import { scheduleApi } from '../api/schedule';
 import { ScheduleByFloor } from '../types';
+import UniversitySelect from '../features/university/ui/UniversitySelect';
+import { useUniversitySearchParam } from '../shared/university/useUniversitySearchParam';
 
 const SchedulePage: React.FC = () => {
   const [selectedFloor, setSelectedFloor] = useState<number>(1);
-  const [schedule, setSchedule] = useState<ScheduleByFloor>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { universityCode, setUniversityCode, university } = useUniversitySearchParam();
 
-  useEffect(() => {
-    loadSchedule();
-  }, []);
+  const scheduleQuery = useQuery({
+    queryKey: ['schedule', universityCode],
+    queryFn: () => scheduleApi.getByFloors(undefined, universityCode),
+  });
 
-  const loadSchedule = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await scheduleApi.getByFloors();
-      setSchedule(data);
-    } catch (err) {
-      const mockSchedule: ScheduleByFloor = {
-        1: [
-          {
-            room: 'Ауд. 112',
-            time: '08:30–10:00',
-            status: 'busy',
-            event: 'Лекция по математическому анализу',
-          },
-          {
-            room: 'Ауд. 112',
-            time: '10:15–11:45',
-            status: 'free',
-            event: 'Свободно',
-          },
-          {
-            room: 'Ауд. 117',
-            time: '12:00–13:30',
-            status: 'busy',
-            event: 'Практика по программированию',
-          },
-        ],
-        2: [
-          {
-            room: 'Ауд. 217',
-            time: '09:00–11:00',
-            status: 'busy',
-            event: 'Презентация магистров',
-          },
-          {
-            room: 'Ауд. 217',
-            time: '11:30–13:00',
-            status: 'free',
-            event: 'Свободно',
-          },
-        ],
-        3: [],
-        4: [],
-      };
-      setSchedule(mockSchedule);
-      console.warn('API недоступен, используются моковые данные:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  const schedule: ScheduleByFloor = scheduleQuery.data || {};
   const scheduleRows = schedule[selectedFloor] || [];
 
-  if (loading) {
+  if (scheduleQuery.isLoading) {
     return (
       <section className="schedule">
         <div className="container">
@@ -78,11 +29,11 @@ const SchedulePage: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (scheduleQuery.error) {
     return (
       <section className="schedule">
         <div className="container">
-          <div className="error">{error}</div>
+          <div className="error">Не удалось загрузить расписание. Попробуйте позже.</div>
         </div>
       </section>
     );
@@ -92,10 +43,24 @@ const SchedulePage: React.FC = () => {
     <section className="schedule">
       <div className="container">
         <div className="section-head">
-          <h2>Свободные слоты по этажам</h2>
-          <p>Быстрый просмотр свободных окон на ближайшие дни. Выберите этаж, чтобы увидеть расписание.</p>
+          <h2>Расписание свободных аудиторий</h2>
+          <p>
+            Посмотрите, где в {university.label} есть свободные окна для занятий, консультаций
+            или встреч. Переключайтесь между этажами, сравнивайте занятые и доступные интервалы
+            и быстро находите аудиторию, которая подойдет по времени.
+          </p>
         </div>
-        <div className="tabs" role="tablist">
+
+        <div className="schedule__filters">
+          <UniversitySelect
+            id="schedule-university"
+            label="Вуз"
+            value={universityCode}
+            onChange={setUniversityCode}
+          />
+        </div>
+
+        <div className="tabs" role="tablist" aria-label="Этажи">
           {[1, 2, 3, 4].map((floor) => (
             <button
               key={floor}
@@ -111,7 +76,7 @@ const SchedulePage: React.FC = () => {
         </div>
         <div className="schedule__table">
           {scheduleRows.length === 0 ? (
-            <EmptyState message="Нет данных для выбранного этажа." />
+            <EmptyState message="Нет данных для выбранного этажа и вуза." />
           ) : (
             <ScheduleTable rows={scheduleRows} />
           )}

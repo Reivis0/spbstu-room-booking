@@ -49,12 +49,14 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('refreshToken');
       
       const currentPath = window.location.pathname;
-      if (currentPath !== '/login' && !currentPath.startsWith('/login')) {
-        window.location.href = '/login';
+      const isAuthPage = currentPath === '/login' || currentPath.startsWith('/login') ||
+        currentPath === '/register' || currentPath.startsWith('/register');
+      const isPublicCatalogPage = currentPath === '/rooms' || currentPath.startsWith('/rooms') ||
+        currentPath === '/schedule' || currentPath.startsWith('/schedule');
+      if (!isAuthPage && !isPublicCatalogPage) {
+        window.location.href = '/register';
       }
     }
     return Promise.reject(error);
   }
 );
-
-

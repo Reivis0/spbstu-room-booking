@@ -1,69 +1,105 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Room, Building } from '../types';
 import { roomsApi } from '../api/rooms';
 import RoomCard from '../components/RoomCard/RoomCard';
 import EmptyState from '../components/EmptyState/EmptyState';
+import UniversitySelect from '../features/university/ui/UniversitySelect';
+import { useUniversitySearchParam } from '../shared/university/useUniversitySearchParam';
+import { normalizeUniversityCode } from '../shared/university/universities';
+
+const getRoomUniversity = (room: Room, fallbackUniversity: string) => {
+  return room.universityCode || room.university
+    ? normalizeUniversityCode(room.universityCode || room.university)
+    : normalizeUniversityCode(fallbackUniversity);
+};
+
+const getBuildingUniversity = (building: Building, fallbackUniversity: string) => {
+  return building.universityCode || building.university
+    ? normalizeUniversityCode(building.universityCode || building.university)
+    : normalizeUniversityCode(fallbackUniversity);
+};
 
 const RoomsPage: React.FC = () => {
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [buildings, setBuildings] = useState<Building[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState({
-    building: '',
-    floor: '',
-    capacity: '',
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { universityCode, setUniversityCode } = useUniversitySearchParam();
+  const buildingFilter = searchParams.get('building') || '';
+  const floorFilter = searchParams.get('floor') || '';
+  const capacityFilter = searchParams.get('capacity') || '';
+
+  const roomsQuery = useQuery({
+    queryKey: ['rooms', universityCode, buildingFilter, capacityFilter],
+    queryFn: () =>
+      roomsApi.getAll({
+        university: universityCode,
+        building: buildingFilter,
+        capacity: capacityFilter,
+      }),
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [roomsData, buildingsData] = await Promise.all([
-        roomsApi.getAll(),
-        roomsApi.getBuildings(),
-      ]);
-      
-      const buildingsMap = new Map(buildingsData.map(b => [b.id, b]));
-      
-      const enrichedRooms = roomsData.map(room => {
-        const building = buildingsMap.get(room.buildingId);
-        return {
-          ...room,
-          building: building?.name || room.building || 'Неизвестное здание',
-        };
-      });
-      
-      setRooms(enrichedRooms);
-      setBuildings(buildingsData);
-    } catch (err) {
-      setError('Не удалось загрузить аудитории. Попробуйте позже.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredRooms = rooms.filter((room) => {
-    if (filters.building && room.buildingId !== filters.building && room.building !== filters.building) return false;
-    if (filters.floor && room.floor && room.floor.toString() !== filters.floor) return false;
-    if (filters.capacity && room.capacity < parseInt(filters.capacity)) return false;
-    return true;
+  const buildingsQuery = useQuery({
+    queryKey: ['buildings', universityCode],
+    queryFn: () => roomsApi.getBuildings(universityCode),
   });
 
-  const uniqueBuildings = Array.from(new Set(rooms.map((r) => r.building))).filter(Boolean);
-  const floors = Array.from(new Set(rooms.map((r) => r.floor).filter((f): f is number => f !== undefined))).sort(
-    (a, b) => a - b
-  );
+  const buildings = useMemo(() => {
+    const data = buildingsQuery.data || [];
+    return data.filter((building) => getBuildingUniversity(building, universityCode) === universityCode);
+  }, [buildingsQuery.data, universityCode]);
 
-  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFilters({ ...filters, [name]: value });
+  const rooms = useMemo(() => {
+    const buildingsMap = new Map((buildingsQuery.data || []).map((building) => [building.id, building]));
+
+    return (roomsQuery.data || []).map((room) => {
+      const building = buildingsMap.get(room.buildingId);
+      return {
+        ...room,
+        building: building?.name || room.building || 'Неизвестное здание',
+        universityCode: room.universityCode || room.university || universityCode,
+      };
+    });
+  }, [buildingsQuery.data, roomsQuery.data, universityCode]);
+
+  const filteredRooms = useMemo(() => {
+    return rooms.filter((room) => {
+      if (getRoomUniversity(room, universityCode) !== universityCode) return false;
+      if (buildingFilter && room.buildingId !== buildingFilter && room.building !== buildingFilter) return false;
+      if (floorFilter && room.floor && room.floor.toString() !== floorFilter) return false;
+      if (capacityFilter && room.capacity < parseInt(capacityFilter, 10)) return false;
+      return true;
+    });
+  }, [buildingFilter, capacityFilter, floorFilter, rooms, universityCode]);
+
+  const uniqueBuildingNames = Array.from(new Set(filteredRooms.map((room) => room.building))).filter(Boolean);
+  const floors = Array.from(
+    new Set(rooms.map((room) => room.floor).filter((floor): floor is number => floor !== undefined))
+  ).sort((a, b) => a - b);
+
+  const setFilter = (name: string, value: string) => {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      if (value) {
+        nextParams.set(name, value);
+      } else {
+        nextParams.delete(name);
+      }
+      return nextParams;
+    });
   };
+
+  const resetFilters = () => {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      nextParams.delete('building');
+      nextParams.delete('floor');
+      nextParams.delete('capacity');
+      return nextParams;
+    });
+  };
+
+  const loading = roomsQuery.isLoading || buildingsQuery.isLoading;
+  const error = roomsQuery.error || buildingsQuery.error;
 
   if (loading) {
     return (
@@ -79,7 +115,7 @@ const RoomsPage: React.FC = () => {
     return (
       <div className="search">
         <div className="container">
-          <div className="error">{error}</div>
+          <div className="error">Не удалось загрузить аудитории. Попробуйте позже.</div>
         </div>
       </div>
     );
@@ -91,48 +127,27 @@ const RoomsPage: React.FC = () => {
         <div className="section-head">
           <h2>Выберите аудиторию</h2>
           <p>
-            Уточните параметры ниже, чтобы увидеть подходящие аудитории и их доступные временные слоты.
+            Найдите пространство под пару, консультацию, встречу команды или учебное мероприятие.
+            Выберите университет, сузьте список по корпусу и вместимости, а POLYBOOK покажет только
+            подходящие аудитории с ближайшими свободными слотами и актуальным статусом доступности.
           </p>
         </div>
-        
-        <div className="filters-panel" style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          marginBottom: '2rem',
-          padding: '1.5rem',
-          backgroundColor: 'var(--surface)',
-          borderRadius: 'var(--radius)',
-          boxShadow: 'var(--shadow)',
-          alignItems: 'flex-end'
-        }}>
-          <div style={{ flex: '1 1 200px', minWidth: '150px' }}>
-            <label htmlFor="building" style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontWeight: '600',
-              color: 'var(--text)'
-            }}>
-              Корпус
-            </label>
+
+        <div className="filters-panel filters-panel--room-search">
+          <UniversitySelect
+            id="rooms-university"
+            label="Вуз"
+            value={universityCode}
+            onChange={setUniversityCode}
+          />
+
+          <div className="filters-panel__field">
+            <label htmlFor="building">Корпус</label>
             <select
               id="building"
               name="building"
-              value={filters.building}
-              onChange={handleFilterChange}
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                fontSize: '1rem',
-                backgroundColor: 'var(--background)',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                transition: 'border-color 0.2s ease'
-              }}
-              onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
-              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+              value={buildingFilter}
+              onChange={(event) => setFilter('building', event.target.value)}
             >
               <option value="">Все корпуса</option>
               {buildings.map((building) => (
@@ -140,7 +155,7 @@ const RoomsPage: React.FC = () => {
                   {building.name}
                 </option>
               ))}
-              {uniqueBuildings.map((buildingName) => (
+              {uniqueBuildingNames.map((buildingName) => (
                 <option key={buildingName} value={buildingName}>
                   {buildingName}
                 </option>
@@ -148,33 +163,13 @@ const RoomsPage: React.FC = () => {
             </select>
           </div>
 
-          <div style={{ flex: '1 1 150px', minWidth: '120px' }}>
-            <label htmlFor="floor" style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontWeight: '600',
-              color: 'var(--text)'
-            }}>
-              Этаж
-            </label>
+          <div className="filters-panel__field">
+            <label htmlFor="floor">Этаж</label>
             <select
               id="floor"
               name="floor"
-              value={filters.floor}
-              onChange={handleFilterChange}
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                fontSize: '1rem',
-                backgroundColor: 'var(--background)',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                transition: 'border-color 0.2s ease'
-              }}
-              onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
-              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+              value={floorFilter}
+              onChange={(event) => setFilter('floor', event.target.value)}
             >
               <option value="">Все этажи</option>
               {floors.map((floor) => (
@@ -185,15 +180,8 @@ const RoomsPage: React.FC = () => {
             </select>
           </div>
 
-          <div style={{ flex: '1 1 150px', minWidth: '120px' }}>
-            <label htmlFor="capacity" style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontWeight: '600',
-              color: 'var(--text)'
-            }}>
-              Вместимость (мин.)
-            </label>
+          <div className="filters-panel__field">
+            <label htmlFor="capacity">Вместимость (мин.)</label>
             <input
               type="number"
               id="capacity"
@@ -201,57 +189,32 @@ const RoomsPage: React.FC = () => {
               min="10"
               max="250"
               step="10"
-              value={filters.capacity}
-              onChange={handleFilterChange}
+              value={capacityFilter}
+              onChange={(event) => setFilter('capacity', event.target.value)}
               placeholder="Любая"
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                fontSize: '1rem',
-                backgroundColor: 'var(--background)',
-                color: 'var(--text)',
-                transition: 'border-color 0.2s ease'
-              }}
-              onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
-              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
 
-          <div style={{ flex: '0 0 auto', alignSelf: 'flex-end' }}>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => setFilters({ building: '', floor: '', capacity: '' })}
-              style={{
-                padding: '0.75rem 1.5rem',
-                whiteSpace: 'nowrap',
-                borderRadius: '12px'
-              }}
-            >
+          <div className="filters-panel__actions">
+            <button type="button" className="btn btn--ghost" onClick={resetFilters}>
               Сбросить
             </button>
           </div>
         </div>
 
         <div className="results">
-          <div className="results__toolbar" style={{ marginBottom: '1.5rem' }}>
+          <div className="results__toolbar">
             <div>
-              <span className="pill pill--muted">
-                {filteredRooms.length} аудиторий найдено
-              </span>
+              <span className="pill pill--muted">{filteredRooms.length} аудиторий найдено</span>
             </div>
           </div>
-          <div className="room-cards" style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1.5rem'
-          }}>
+          <div className="room-cards room-cards--grid">
             {filteredRooms.length === 0 ? (
               <EmptyState message="По выбранным параметрам аудиторий не найдено. Попробуйте изменить фильтры." />
             ) : (
-              filteredRooms.map((room) => <RoomCard key={room.id} room={room} />)
+              filteredRooms.map((room) => (
+                <RoomCard key={room.id} room={room} university={universityCode} />
+              ))
             )}
           </div>
         </div>

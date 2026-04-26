@@ -1,9 +1,15 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
+import UniversitySelect from '../features/university/ui/UniversitySelect';
+import { useUniversitySearchParam } from '../shared/university/useUniversitySearchParam';
+import { DEFAULT_UNIVERSITY, getUniversity } from '../shared/university/universities';
 
 const HomePage: React.FC = () => {
   const { isAuthenticated } = useAuthStore();
+  const { universityCode, setUniversityCode } = useUniversitySearchParam();
+  const selectedUniversity = getUniversity(universityCode);
+  const universityQuery = universityCode === DEFAULT_UNIVERSITY ? '' : `?university=${universityCode}`;
 
   return (
     <>
@@ -11,48 +17,66 @@ const HomePage: React.FC = () => {
         <section className="hero" id="hero">
           <div className="container hero__content">
             <div className="hero__text">
-              <p className="hero__eyebrow">Система бронирования аудиторий</p>
+              <p className="hero__eyebrow">Единый сервис учебных пространств Санкт-Петербурга</p>
               <h1 className="hero__title">
-                Бронируйте аудитории для занятий, семинаров и мероприятий
+                POLYBOOK
               </h1>
               <p className="hero__subtitle">
-                Найдите подходящую аудиторию по параметрам, забронируйте время и управляйте своими бронированиями. 
-                Простой и удобный интерфейс для быстрого поиска и бронирования.
+                Платформа для быстрого бронирования аудиторий в разных университетах.
+                Выберите СПбПУ, СПбГУ или ЛЭТИ, найдите подходящее помещение и управляйте
+                бронированиями в одном интерфейсе.
               </p>
+              <div className="hero__university">
+                <UniversitySelect
+                  id="home-university"
+                  label="Выберите вуз"
+                  value={universityCode}
+                  onChange={setUniversityCode}
+                />
+                <span className="hero__university-note">
+                  Сейчас выбран {selectedUniversity.label}. Поиск и календарь откроются с этим фильтром.
+                </span>
+              </div>
               <div className="hero__actions">
-                <Link to="/rooms" className="btn btn--primary">
-                  Найти аудиторию
-                </Link>
-                {isAuthenticated && (
-                  <Link to="/my-bookings" className="btn btn--ghost">
-                    Мои бронирования
-                  </Link>
-                )}
-                {!isAuthenticated && (
-                  <Link to="/login" className="btn btn--ghost">
-                    Войти в систему
-                  </Link>
+                {isAuthenticated ? (
+                  <>
+                    <Link to={`/rooms${universityQuery}`} className="btn btn--primary">
+                      Найти аудиторию
+                    </Link>
+                    <Link to={`/my-bookings${universityQuery}`} className="btn btn--ghost">
+                      Мои бронирования
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link to={`/register${universityQuery}`} className="btn btn--primary">
+                      Зарегистрироваться
+                    </Link>
+                    <Link to="/login" className="btn btn--ghost">
+                      Войти в систему
+                    </Link>
+                  </>
                 )}
               </div>
             </div>
             <div className="hero__card">
-              <h2>Возможности системы</h2>
+              <h2>Что уже есть в POLYBOOK</h2>
               <ul className="booking-list">
                 <li>
-                  <span className="booking-list__title">Поиск аудиторий</span>
-                  <span className="booking-list__meta">Фильтрация по корпусу, этажу и вместимости</span>
+                  <span className="booking-list__title">Три университета</span>
+                  <span className="booking-list__meta">СПбПУ, СПбГУ и ЛЭТИ с отдельными корпусами и аудиториями</span>
                 </li>
                 <li>
-                  <span className="booking-list__title">Просмотр оборудования</span>
-                  <span className="booking-list__meta">Информация о проекторах, досках, компьютерах и Wi-Fi</span>
+                  <span className="booking-list__title">Фильтр по вузу</span>
+                  <span className="booking-list__meta">Поиск и календарь показывают данные только выбранного университета</span>
                 </li>
                 <li>
-                  <span className="booking-list__title">Бронирование</span>
-                  <span className="booking-list__meta">Выберите дату и время для вашего мероприятия</span>
+                  <span className="booking-list__title">Real-time статусы</span>
+                  <span className="booking-list__meta">Карточки обновляются по событиям бронирований без перезагрузки</span>
                 </li>
                 <li>
-                  <span className="booking-list__title">Управление бронированиями</span>
-                  <span className="booking-list__meta">Просмотр, отмена и отслеживание ваших бронирований</span>
+                  <span className="booking-list__title">Мои бронирования</span>
+                  <span className="booking-list__meta">Вкладки по вузам помогают быстро найти нужную бронь</span>
                 </li>
               </ul>
             </div>
@@ -64,11 +88,12 @@ const HomePage: React.FC = () => {
             <div>
               <h2>Как использовать систему</h2>
               <p>
-                Система бронирования аудиторий позволяет быстро найти и забронировать подходящую аудиторию 
-                для ваших занятий, семинаров или мероприятий.
+                POLYBOOK помогает быстро найти и забронировать подходящую аудиторию для занятий,
+                семинаров или мероприятий в университетах Санкт-Петербурга.
               </p>
               <ul className="feature-list">
-                <li><strong>Поиск аудиторий:</strong> Используйте фильтры для поиска по корпусу, этажу и вместимости</li>
+                <li><strong>Выбор вуза:</strong> Сначала выберите СПбПУ, СПбГУ или ЛЭТИ</li>
+                <li><strong>Поиск аудиторий:</strong> Используйте фильтры по корпусу, этажу и вместимости</li>
                 <li><strong>Просмотр информации:</strong> Узнайте о доступном оборудовании в каждой аудитории</li>
                 <li><strong>Бронирование:</strong> Выберите дату и время, создайте бронирование в несколько кликов</li>
                 <li><strong>Управление:</strong> Просматривайте все свои бронирования и отменяйте при необходимости</li>
@@ -95,7 +120,7 @@ const HomePage: React.FC = () => {
           <div className="container contacts__content">
             <div>
               <h2>Контакты</h2>
-              <p>Отдел бронирования аудиторий</p>
+              <p>Служба поддержки POLYBOOK</p>
               <ul className="contacts__list">
                 <li>
                   <span>Email:</span>
@@ -114,10 +139,10 @@ const HomePage: React.FC = () => {
               </ul>
             </div>
             <div className="contacts__card">
-              <h3>Как нас найти</h3>
-              <p>Санкт-Петербург, Политехническая ул., 29</p>
-              <p>Главный корпус, аудитория 105, стойка выдачи ключей</p>
-              <p className="contacts__note">Работаем ежедневно, подробности по телефону.</p>
+              <h3>Где работает сервис</h3>
+              <p>Санкт-Петербург: СПбПУ, СПбГУ и ЛЭТИ</p>
+              <p>Единый интерфейс для бронирования учебных пространств разных университетов.</p>
+              <p className="contacts__note">Подробности по доступу и поддержке можно уточнить у диспетчера.</p>
             </div>
           </div>
         </section>
@@ -125,8 +150,8 @@ const HomePage: React.FC = () => {
 
       <footer className="footer">
         <div className="container footer__inner">
-          <span>© 2025 СПбГТУ. Главный корпус</span>
-          <a href="#" className="footer__link">
+          <span>© 2026 POLYBOOK</span>
+          <a href="/privacy" className="footer__link">
             Политика конфиденциальности
           </a>
         </div>
