@@ -24,13 +24,19 @@ public class AvailabilityEngineClient {
 
     private final int port;
     private final List<String> candidateHosts;
+    private final List<io.grpc.ClientInterceptor> interceptors;
     private int currentHostIndex;
     private ManagedChannel channel;
     private RoomServiceGrpc.RoomServiceBlockingStub stub;
 
     public AvailabilityEngineClient(String host, int port) throws InterruptedException {
+        this(host, port, java.util.Collections.emptyList());
+    }
+
+    public AvailabilityEngineClient(String host, int port, List<io.grpc.ClientInterceptor> interceptors) throws InterruptedException {
         this.port = port;
         this.candidateHosts = buildCandidateHosts(host);
+        this.interceptors = interceptors;
         this.currentHostIndex = 0;
 
         int retries = 5;
@@ -68,7 +74,7 @@ public class AvailabilityEngineClient {
 
         ComputeIntervalsRequest request = builder.build();
         ComputeIntervalsResponse response = executeWithFailover(
-                s -> s.withDeadlineAfter(10, java.util.concurrent.TimeUnit.SECONDS).computeIntervals(request),
+                s -> s.withDeadlineAfter(3, java.util.concurrent.TimeUnit.SECONDS).computeIntervals(request),
                 "compute_intervals"
         );
         logger.debug("Availability intervals computed room_id={} date={} slots_count={}",
@@ -90,7 +96,7 @@ public class AvailabilityEngineClient {
 
         ValidateRequest request = builder.build();
         ValidateResponse response = executeWithFailover(
-                s -> s.withDeadlineAfter(10, java.util.concurrent.TimeUnit.SECONDS).validate(request),
+                s -> s.withDeadlineAfter(3, java.util.concurrent.TimeUnit.SECONDS).validate(request),
                 "validate"
         );
         logger.debug("Availability validation completed room_id={} date={} is_valid={} conflicts_count={}",
@@ -116,7 +122,7 @@ public class AvailabilityEngineClient {
                 .build();
 
         OccupiedIntervalsResponse response = executeWithFailover(
-                s -> s.withDeadlineAfter(10, java.util.concurrent.TimeUnit.SECONDS).occupiedIntervals(request),
+                s -> s.withDeadlineAfter(3, java.util.concurrent.TimeUnit.SECONDS).occupiedIntervals(request),
                 "occupied_intervals"
         );
         logger.debug("Occupied intervals fetched room_id={} date={} intervals_count={}",
@@ -198,6 +204,7 @@ public class AvailabilityEngineClient {
         }
         channel = ManagedChannelBuilder.forAddress(host, port)
                 .usePlaintext()
+                .intercept(interceptors)
                 .build();
         stub = RoomServiceGrpc.newBlockingStub(channel);
     }

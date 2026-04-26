@@ -8,7 +8,7 @@ find_package(Threads REQUIRED)
 pkg_check_modules(LIBEVENT REQUIRED libevent)
 pkg_check_modules(REDIS REQUIRED hiredis)
 pkg_check_modules(POSTGRESQL REQUIRED libpq)
-
+find_library(PQXX_LIBRARIES NAMES pqxx)
 
 file(COPY ${CMAKE_SOURCE_DIR}/include/configs/
      DESTINATION ${CMAKE_BINARY_DIR}/bin/configs)
@@ -37,6 +37,7 @@ target_link_libraries(availability_engine PRIVATE
     common_lib
     ${REDIS_LIBRARIES}
     ${POSTGRESQL_LIBRARIES}
+    ${PQXX_LIBRARIES}
     nats_static
     ${LIBEVENT_LIBRARIES}
     Threads::Threads

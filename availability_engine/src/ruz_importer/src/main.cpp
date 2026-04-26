@@ -25,7 +25,7 @@ int main()
   
   try
   {
-    Logger::getInstance().init();
+    Logger::getInstance().init("ruz-importer");
     
     LOG_INFO("RUZ_Importer: RUZ Importer Starting");
     

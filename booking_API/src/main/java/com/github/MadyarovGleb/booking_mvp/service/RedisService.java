@@ -1,17 +1,19 @@
 package com.github.MadyarovGleb.booking_mvp.service;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
 @Service
+@Slf4j
 public class RedisService {
-
-    private static final Logger logger = LoggerFactory.getLogger(RedisService.class);
 
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -23,30 +25,48 @@ public class RedisService {
     public <T> T get(String key, Class<T> clazz) {
         Object value = redisTemplate.opsForValue().get(key);
         if (value == null) {
-            logger.debug("Redis cache miss for key={}", key);
+            log.debug("Redis cache miss for key={}", key);
             return null;
         }
-        logger.debug("Redis cache hit for key={}", key);
+        log.debug("Redis cache hit for key={}", key);
         return (T) value;
     }
 
     public void set(String key, Object value, Duration ttl) {
         redisTemplate.opsForValue().set(key, value, ttl);
-        logger.debug("Redis key set key={} ttl_seconds={}", key, ttl.toSeconds());
+        log.debug("Redis key set key={} ttl_seconds={}", key, ttl.toSeconds());
     }
 
     public void delete(String key) {
         redisTemplate.delete(key);
-        logger.debug("Redis key deleted key={}", key);
+        log.debug("Redis key deleted key={}", key);
     }
 
     public void deletePattern(String pattern) {
-        Set<String> keys = redisTemplate.keys(pattern);
-        if (keys != null && !keys.isEmpty()) {
-            redisTemplate.delete(keys);
-            logger.debug("Redis keys deleted by pattern={} keys_count={}", pattern, keys.size());
-            return;
+        log.debug("Deleting keys by pattern using SCAN: {}", pattern);
+        ScanOptions options = ScanOptions.scanOptions().match(pattern).count(100).build();
+        
+        try (Cursor<byte[]> cursor = Objects.requireNonNull(redisTemplate.getConnectionFactory())
+                .getConnection().scan(options)) {
+            
+            List<byte[]> keysToDelete = new ArrayList<>();
+            while (cursor.hasNext()) {
+                keysToDelete.add(cursor.next());
+                if (keysToDelete.size() >= 100) {
+                    performBatchDelete(keysToDelete);
+                }
+            }
+            performBatchDelete(keysToDelete);
+            log.info("Finished deleting keys for pattern: {}", pattern);
+        } catch (Exception e) {
+            log.error("Failed to delete keys by pattern: {}", pattern, e);
         }
-        logger.debug("Redis deletePattern found no keys for pattern={}", pattern);
+    }
+
+    private void performBatchDelete(List<byte[]> keys) {
+        if (keys.isEmpty()) return;
+        Objects.requireNonNull(redisTemplate.getConnectionFactory())
+                .getConnection().del(keys.toArray(new byte[0][0]));
+        keys.clear();
     }
 }

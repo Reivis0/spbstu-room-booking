@@ -128,7 +128,11 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
           {showSchedule ? 'Скрыть расписание' : 'Показать расписание'}
         </button>
 
-        {showSchedule && <DayTimeline roomId={room.id} />}
+        {showSchedule && (
+          <div className="custom-scrollbar" style={{ maxHeight: '280px', overflowY: 'auto', marginTop: '12px', paddingRight: '4px' }}>
+            <DayTimeline roomId={room.id} />
+          </div>
+        )}
       </div>
     </article>
   );

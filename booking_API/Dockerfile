@@ -4,31 +4,6 @@ WORKDIR /app
 
 # Step 1: Cache dependencies (only re-runs if pom.xml changes)
 COPY pom.xml .
-RUN mkdir -p /root/.m2 && cat > /root/.m2/settings.xml <<'EOF'
-<settings>
-  <mirrors>
-    <mirror>
-      <id>central-mirror</id>
-      <name>Maven Central Mirror</name>
-      <url>https://repo1.maven.org/maven2</url>
-      <mirrorOf>central</mirrorOf>
-    </mirror>
-  </mirrors>
-  <profiles>
-    <profile>
-      <id>network-stability</id>
-      <properties>
-        <maven.wagon.httpconnectionManager.ttlSeconds>30</maven.wagon.httpconnectionManager.ttlSeconds>
-        <maven.wagon.http.retryHandler.count>5</maven.wagon.http.retryHandler.count>
-        <maven.wagon.http.pool>false</maven.wagon.http.pool>
-      </properties>
-    </profile>
-  </profiles>
-  <activeProfiles>
-    <activeProfile>network-stability</activeProfile>
-  </activeProfiles>
-</settings>
-EOF
 
 RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -B
 
@@ -43,10 +18,13 @@ WORKDIR /app
 ENV TZ=Europe/Moscow
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m spring
+
+USER spring
 
 # Use specific JAR name or wildcard, but ensure we only get the main artifact
-COPY --from=build /app/target/booking_mvp-*.jar app.jar
+COPY --from=build --chown=spring:spring /app/target/booking_mvp-*.jar app.jar
 
 EXPOSE 8081
 

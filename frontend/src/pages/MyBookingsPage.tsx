@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Booking, Room } from '../types';
 import { bookingsApi } from '../api/bookings';
@@ -13,24 +13,12 @@ const MyBookingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (authLoading) {
-      return;
-    }
-    
-    const token = localStorage.getItem('accessToken');
-    if (!isAuthenticated && !token) {
-      navigate('/login');
-      return;
-    }
-
-    loadBookings();
-  }, [isAuthenticated, authLoading, navigate]);
-
-  const loadBookings = async () => {
+  const loadBookings = useCallback(async (isBackground = false) => {
     try {
-      setLoading(true);
-      setError(null);
+      if (!isBackground) {
+        setLoading(true);
+        setError(null);
+      }
       
       // Fetch bookings and rooms in parallel
       const [bookingsData, roomsData] = await Promise.all([
@@ -58,12 +46,42 @@ const MyBookingsPage: React.FC = () => {
       if (err.response?.status === 401 || err.response?.status === 403) {
         return;
       }
-      setError('Не удалось загрузить бронирования. Попробуйте позже.');
+      if (!isBackground) {
+        setError('Не удалось загрузить бронирования. Попробуйте позже.');
+      }
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    
+    const token = localStorage.getItem('accessToken');
+    if (!isAuthenticated && !token) {
+      navigate('/login');
+      return;
+    }
+
+    loadBookings();
+  }, [isAuthenticated, authLoading, navigate, loadBookings]);
+
+  const hasPending = bookings.some(b => b.status === 'pending');
+
+  useEffect(() => {
+    if (!hasPending) return;
+
+    const intervalId = setInterval(() => {
+      loadBookings(true);
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [hasPending, loadBookings]);
 
   const handleCancel = async (id: string) => {
     if (!window.confirm('Вы уверены, что хотите отменить бронирование?')) {

@@ -7,11 +7,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import io.grpc.StatusRuntimeException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,6 +23,18 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(StatusRuntimeException.class)
+    public ResponseEntity<?> handleGrpcStatusRuntimeException(StatusRuntimeException ex) {
+        logger.warn("gRPC error: {}", ex.getMessage());
+        if (ex.getStatus().getCode() == io.grpc.Status.Code.DEADLINE_EXCEEDED || 
+            ex.getStatus().getCode() == io.grpc.Status.Code.UNAVAILABLE) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Availability engine is currently overloaded", "message", ex.getMessage()));
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Internal gRPC Error", "message", ex.getMessage()));
+    }
 
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<?> handleValidationException(ValidationException ex) {
@@ -47,6 +62,20 @@ public class GlobalExceptionHandler {
         logger.warn("Conflict: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(errorBody("conflict", ex.getMessage(), ex.getDetails()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<?> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
+        logger.warn("Data integrity violation: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(errorBody("conflict", "Slot already booked or concurrent modification"));
+    }
+
+    @ExceptionHandler(CannotAcquireLockException.class)
+    public ResponseEntity<?> handleCannotAcquireLockException(CannotAcquireLockException ex) {
+        logger.warn("Database lock acquisition failure: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(errorBody("conflict", "Database is busy, please retry later"));
     }
 
     @ExceptionHandler({

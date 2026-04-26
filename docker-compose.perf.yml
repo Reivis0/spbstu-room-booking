@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  k6:
+    image: grafana/k6
+    volumes:
+      - ./performance:/scripts
+    environment:
+      - BASE_URL=http://booking-api:8081/api/v1
+    networks:
+      - booking-network
+    command: run /scripts/load-test.js
+
+networks:
+  booking-network:
+    external:
+      name: spbstu-room-booking_booking-net

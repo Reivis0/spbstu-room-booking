@@ -58,6 +58,10 @@ NatsAsyncClient::NatsAsyncClient()
         m_nats_connect.m_client_port = 4222;
     }
 
+    // Override with ENV
+    if (const char* host = std::getenv("NATS_HOST")) m_nats_connect.m_host = host;
+    if (const char* port = std::getenv("NATS_PORT")) m_nats_connect.m_client_port = std::stoi(port);
+
     // Construct m_url using host and port
     m_url = "nats://" + m_nats_connect.m_host + ":" + std::to_string(m_nats_connect.m_client_port);
 
@@ -140,6 +144,7 @@ void NatsAsyncClient::publish(const std::string& subject, const std::string& dat
 void NatsAsyncClient::publishScheduleRefreshed(const std::string& room_id, const std::string& date)
 {
     std::string payload = "{ \"event\": \"schedule_refreshed\", \"room_id\": \"" + room_id + "\", \"date\": \"" + date + "\" }";
+    LOG_INFO("NATS: Publishing schedule_refreshed for room_id=" + room_id + " date=" + date);
     publish("events.schedule_refreshed", payload);
 }
 

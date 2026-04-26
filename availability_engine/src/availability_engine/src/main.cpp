@@ -1,9 +1,29 @@
 #include "async_room_service.hpp"
+#include "pqxx_pool.hpp"
 #include "logger.hpp"
+#include "metrics/MetricsRegistry.h"
 #include <iostream>
 #include <signal.h>
 #include <thread>
 #include <atomic>
+#include <fstream>
+#include <sstream>
+#include <map>
+
+// Helper to read pg_config.ini
+std::string get_pqxx_conn_str() {
+    auto get_env = [](const char* name) -> std::string {
+        const char* val = std::getenv(name);
+        if (!val) throw std::runtime_error(std::string("Missing required environment variable: ") + name);
+        return std::string(val);
+    };
+
+    return "host=" + get_env("POSTGRES_HOST") + 
+           " port=" + get_env("POSTGRES_PORT") + 
+           " dbname=" + get_env("POSTGRES_DB") + 
+           " user=" + get_env("POSTGRES_USER") + 
+           " password=" + get_env("POSTGRES_PASSWORD");
+}
 
 std::unique_ptr<AsyncRoomService> service;
 
@@ -30,7 +50,10 @@ int main()
     
     try
     {
-        Logger::getInstance().init();
+        Logger::getInstance().init("availability-engine");
+        
+        // ОПТИМИЗАЦИЯ: Инициализация метрик на порту 8082
+        MetricsRegistry::instance().start("0.0.0.0:8082");
 
         auto redis_client = std::make_shared<RedisAsyncClient>();
         
@@ -43,7 +66,7 @@ int main()
             return EXIT_FAILURE;
         }
         
-        auto nats_client = std::shared_ptr<NatsAsyncClient>();
+        auto nats_client = std::make_shared<NatsAsyncClient>();
         try {
             nats_client = std::make_shared<NatsAsyncClient>();
             LOG_INFO("NATS client created successfully.");
@@ -52,8 +75,17 @@ int main()
             return EXIT_FAILURE;
         }
         
+        std::shared_ptr<PqxxConnectionPool> pqxx_pool;
+        try {
+            pqxx_pool = std::make_shared<PqxxConnectionPool>(10, get_pqxx_conn_str());
+            LOG_INFO("pqxx Connection Pool created successfully.");
+        } catch (const std::exception& e) {
+            LOG_ERROR(std::string("Failed to initialize pqxx connection pool: ") + e.what());
+            return EXIT_FAILURE;
+        }
+
         service = std::make_unique<AsyncRoomService>(
-            redis_client, pg_client, nats_client);
+            redis_client, pg_client, nats_client, pqxx_pool);
         
         LOG_INFO("Async Room Service starting...");
         service->start();

@@ -4,6 +4,7 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <future>
 
 std::vector<BuildingInfo> SpbptuParser::fetchBuildingList() {
     std::vector<BuildingInfo> buildings;
@@ -19,17 +20,29 @@ std::vector<BuildingInfo> SpbptuParser::fetchBuildingList() {
         return buildings;
     }
 
-    if (!root.isObject() || !root.isMember("buildings")) return buildings;
-    const auto& b_list = root["buildings"];
-    if (!b_list.isArray()) return buildings;
+    const Json::Value* b_list = nullptr;
+    if (root.isArray()) {
+        b_list = &root;
+    } else if (root.isObject() && root.isMember("buildings") && root["buildings"].isArray()) {
+        b_list = &root["buildings"];
+    }
 
-    for (const auto& b : b_list) {
+    if (!b_list) {
+        LOG_WARN("SpbptuParser: unexpected buildings format");
+        return buildings;
+    }
+
+    for (const auto& b : *b_list) {
         if (!b.isObject()) continue;
         BuildingInfo info;
         info.id = std::to_string(b.get("id", 0).asInt());
         info.name = b.get("name", "").asString();
-        info.address = b.get("address", "").asString(); 
-        if (info.address.empty()) info.address = b.get("abbrev", "").asString();
+        
+        std::string addr = b.get("address", "").asString();
+        if (addr.empty()) {
+            addr = b.get("abbr", b.get("abbrev", "")).asString();
+        }
+        info.address = addr;
         buildings.push_back(info);
     }
     return buildings;
@@ -49,11 +62,19 @@ std::vector<RoomInfo> SpbptuParser::fetchRoomList(const std::string& building_id
         return rooms;
     }
 
-    if (!root.isObject() || !root.isMember("rooms")) return rooms;
-    const auto& r_list = root["rooms"];
-    if (!r_list.isArray()) return rooms;
+    const Json::Value* r_list = nullptr;
+    if (root.isArray()) {
+        r_list = &root;
+    } else if (root.isObject() && root.isMember("rooms") && root["rooms"].isArray()) {
+        r_list = &root["rooms"];
+    }
 
-    for (const auto& r : r_list) {
+    if (!r_list) {
+        LOG_WARN("SpbptuParser: unexpected rooms format");
+        return rooms;
+    }
+
+    for (const auto& r : *r_list) {
         if (!r.isObject()) continue;
         RoomInfo info;
         info.id = std::to_string(r.get("id", 0).asInt());
@@ -91,25 +112,9 @@ std::vector<ScheduleRecord> SpbptuParser::fetchRoomSchedule(const RoomInfo& room
     int max_weeks = 52; // Safety limit
     int weeks = 0;
 
+    std::vector<std::string> dates;
     while (current_date <= date_to && !current_date.empty() && weeks < max_weeks) {
-        std::string url = "https://ruz.spbstu.ru/api/v1/ruz/buildings/" + room.building_id + "/rooms/" + room.id + "/scheduler?date=" + current_date;
-        std::string response = http_.fetch_ruz_data(url);
-
-        if (!response.empty()) {
-            auto week_records = parse(response);
-            // If the JSON didn't have room info (which is common for room-specific API), 
-            // we fill it from our 'room' context.
-            for (auto& rec : week_records) {
-                if (rec.ruz_room_id.empty()) rec.ruz_room_id = room.id;
-                if (rec.room_name.empty()) rec.room_name = room.name;
-                rec.ruz_building_id = room.building_id;
-                rec.building_name = room.building_name;
-                rec.building_address = room.building_address;
-                rec.compute_hash();
-                records.push_back(std::move(rec));
-            }
-        }
-        
+        dates.push_back(current_date);
         std::string next_date = addDays(current_date, 7);
         if (next_date == current_date || next_date.empty()) {
             LOG_ERROR("SpbptuParser: Date did not advance: " + current_date);
@@ -118,17 +123,45 @@ std::vector<ScheduleRecord> SpbptuParser::fetchRoomSchedule(const RoomInfo& room
         current_date = next_date;
         weeks++;
     }
+
+    HttpClient local_http;
+    LOG_INFO("SpbptuParser: Starting to fetch " + std::to_string(dates.size()) + " weeks for room " + room.id);
+    for (const auto& d : dates) {
+        std::string url = "https://ruz.spbstu.ru/api/v1/ruz/buildings/" + room.building_id + "/rooms/" + room.id + "/scheduler?date=" + d;
+        LOG_INFO("SpbptuParser: About to fetch URL: " + url);
+        std::string response = local_http.fetch_ruz_data(url);
+        LOG_INFO("SpbptuParser: Fetch completed, response size: " + std::to_string(response.size()));
+        
+        if (!response.empty()) {
+            LOG_INFO("SpbptuParser: About to parse JSON response");
+            std::vector<ScheduleRecord> week_records = parse(response);
+            LOG_INFO("SpbptuParser: Parse completed, got " + std::to_string(week_records.size()) + " records");
+            for (auto& rec : week_records) {
+                if (rec.ruz_room_id.empty()) rec.ruz_room_id = room.id;
+                if (rec.room_name.empty()) rec.room_name = room.name;
+                rec.ruz_building_id = room.building_id;
+                rec.building_name = room.building_name;
+                rec.building_address = room.building_address;
+                rec.compute_hash();
+            }
+            records.insert(records.end(), std::make_move_iterator(week_records.begin()), std::make_move_iterator(week_records.end()));
+        }
+    }
+
     return records;
 }
 
 std::vector<ScheduleRecord> SpbptuParser::parse(const std::string& json_str) {
+    LOG_INFO("SpbptuParser::parse: Starting JSON parsing, input size: " + std::to_string(json_str.size()));
     std::vector<ScheduleRecord> records;
     Json::Value root;
     Json::Reader reader;
+    LOG_INFO("SpbptuParser::parse: About to call reader.parse()");
     if (!reader.parse(json_str, root)) {
         LOG_ERROR("SpbptuParser: JSON parse error");
         return records;
     }
+    LOG_INFO("SpbptuParser::parse: JSON parsed successfully");
 
     const Json::Value* days_node = nullptr;
     if (root.isObject() && root.isMember("week") && root["week"].isObject() && root["week"].isMember("days")) {

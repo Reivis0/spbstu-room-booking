@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: booking-api
   datasource:
     url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
     driver-class-name: org.postgresql.Driver
@@ -60,6 +62,9 @@ management:
     web:
       exposure:
         include: prometheus,health,info,metrics
+  tracing:
+    sampling:
+      probability: 1.0
   endpoint:
     health:
       show-details: always

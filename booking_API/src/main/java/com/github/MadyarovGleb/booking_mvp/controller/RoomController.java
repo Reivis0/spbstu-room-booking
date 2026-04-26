@@ -6,6 +6,9 @@ import com.github.MadyarovGleb.booking_mvp.service.RoomService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -26,26 +29,28 @@ public class RoomController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Room>> search(
+    public ResponseEntity<Page<Room>> search(
             @RequestParam(required = false) UUID building_id,
             @RequestParam(required = false) Integer capacity_min,
             @RequestParam(required = false) Integer capacity_max,
             @RequestParam(required = false) List<String> features,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_to
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_to,
+            @PageableDefault(size = 20) Pageable pageable
     ) {
         if (building_id != null) {
             MDC.put("building_id", building_id.toString());
         }
         logger.info("Room search started");
-        List<Room> rooms = roomService.search(
+        Page<Room> rooms = roomService.search(
                 building_id, capacity_min, capacity_max, features,
                 search,
                 available_from != null ? available_from.toString() : null,
-                available_to != null ? available_to.toString() : null
+                available_to != null ? available_to.toString() : null,
+                pageable
         );
-        logger.info("Room search completed successfully count={}", rooms.size());
+        logger.info("Room search completed successfully count={}", rooms.getNumberOfElements());
         return ResponseEntity.ok(rooms);
     }
 

@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { Room, Building, RoomSchedule } from '../types';
+import { Room, Building, RoomSchedule, Page } from '../types';
 
 export interface AvailabilityResponse {
   roomId: string;
@@ -11,23 +11,29 @@ export interface AvailabilityResponse {
 }
 
 export const roomsApi = {
-  getAll: async (): Promise<Room[]> => {
-    const response = await apiClient.get<Room[]>('/rooms');
-    return response.data.map((room) => {
+  getAll: async (params?: { page?: number; size?: number; buildingId?: string }): Promise<Room[]> => {
+    // Using a large size as a quick fix for missing rooms
+    const response = await apiClient.get<Page<Room> | Room[]>('/rooms', {
+      params: { size: 2000, ...params },
+    });
+
+    // Check if the response is a Page object or a direct array
+    const data = Array.isArray(response.data) ? response.data : response.data.content || [];
+
+    return data.map((room) => {
       let equipment: string[] = [];
       try {
-        const features = JSON.parse(room.features || '{}');
-        if (Array.isArray(features.equipment)) {
-          equipment = features.equipment;
-        } else {
-          equipment = Object.keys(features).filter(key => features[key] === true);
-        }
-        if (process.env.NODE_ENV === 'development' && equipment.length > 0) {
-          console.log(`[Rooms API] Room ${room.name}: parsed equipment:`, equipment);
+        if (room.features) {
+          const features = JSON.parse(room.features);
+          if (Array.isArray(features.equipment)) {
+            equipment = features.equipment;
+          } else {
+            equipment = Object.keys(features).filter(key => features[key] === true);
+          }
         }
       } catch (e) {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[Rooms API] Failed to parse features:', room.features, e);
+          console.warn('[Rooms API] Failed to parse features for room:', room.name, e);
         }
       }
       return {
@@ -42,11 +48,13 @@ export const roomsApi = {
     const room = response.data;
     let equipment: string[] = [];
     try {
-      const features = JSON.parse(room.features || '{}');
-      if (Array.isArray(features.equipment)) {
-        equipment = features.equipment;
-      } else {
-        equipment = Object.keys(features).filter(key => features[key] === true);
+      if (room.features) {
+        const features = JSON.parse(room.features);
+        if (Array.isArray(features.equipment)) {
+          equipment = features.equipment;
+        } else {
+          equipment = Object.keys(features).filter(key => features[key] === true);
+        }
       }
     } catch (e) {
       if (process.env.NODE_ENV === 'development') {
@@ -66,7 +74,12 @@ export const roomsApi = {
         params: { date },
       }
     );
-    return response.data;
+    
+    // Ensure schedule has a non-null slots array
+    return {
+      ...response.data,
+      slots: response.data?.slots || [],
+    };
   },
 
   getAvailability: async (roomId: string, date: string): Promise<AvailabilityResponse> => {
@@ -79,9 +92,13 @@ export const roomsApi = {
     return response.data;
   },
 
-  getBuildings: async (): Promise<Building[]> => {
-    const response = await apiClient.get<Building[]>('/buildings');
-    return response.data;
+  getBuildings: async (params?: { page?: number; size?: number }): Promise<Building[]> => {
+    const response = await apiClient.get<Page<Building> | Building[]>('/buildings', {
+      params: { size: 500, ...params },
+    });
+    
+    // Check if the response is a Page object or a direct array
+    return Array.isArray(response.data) ? response.data : response.data.content || [];
   },
 };
 

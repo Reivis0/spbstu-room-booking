@@ -1,0 +1,75 @@
+--- availability_engine/src/ruz_importer/src/spbptu_parser.cpp
++++ availability_engine/src/ruz_importer/src/spbptu_parser.cpp
+@@ -4,6 +4,7 @@
+ #include <chrono>
+ #include <iomanip>
+ #include <sstream>
++#include <future>
+ 
+ std::vector<BuildingInfo> SpbptuParser::fetchBuildingList() {
+     std::vector<BuildingInfo> buildings;
+@@ -87,27 +88,29 @@
+     int max_weeks = 52; // Safety limit
+     int weeks = 0;
+ 
+-    while (current_date <= date_to && !current_date.empty() && weeks < max_weeks) {
+-        std::string url = "https://ruz.spbstu.ru/api/v1/ruz/buildings/" + room.building_id + "/rooms/" + room.id + "/scheduler?date=" + current_date;
+-        std::string response = http_.fetch_ruz_data(url);
++    std::vector<std::string> dates;
++    while (current_date <= date_to && !current_date.empty() && weeks < max_weeks) {
++        dates.push_back(current_date);
++        current_date = addDays(current_date, 7);
++        weeks++;
++    }
+ 
+-        if (!response.empty()) {
+-            auto week_records = parse(response);
+-            // If the JSON didn't have room info (which is common for room-specific API), 
+-            // we fill it from our 'room' context.
+-            for (auto& rec : week_records) {
+-                if (rec.ruz_room_id.empty()) rec.ruz_room_id = room.id;
+-                if (rec.room_name.empty()) rec.room_name = room.name;
+-                rec.ruz_building_id = room.building_id;
+-                rec.building_name = room.building_name;
+-                rec.building_address = room.building_address;
+-                rec.compute_hash();
+-                records.push_back(std::move(rec));
+-            }
+-        }
+-        
+-        std::string next_date = addDays(current_date, 7);
+-        if (next_date == current_date || next_date.empty()) {
+-            LOG_ERROR("SpbptuParser: Date did not advance: " + current_date);
+-            break;
+-        }
+-        current_date = next_date;
+-        weeks++;
++    std::vector<std::future<std::vector<ScheduleRecord>>> futures;
++    
++    for (const auto& d : dates) {
++        futures.push_back(std::async(std::launch::async, [this, room, d]() {
++            HttpClient local_http;
++            std::string url = "https://ruz.spbstu.ru/api/v1/ruz/buildings/" + room.building_id + "/rooms/" + room.id + "/scheduler?date=" + d;
++            std::string response = local_http.fetch_ruz_data(url);
++            std::vector<ScheduleRecord> week_records;
++            if (!response.empty()) {
++                week_records = parse(response);
++                for (auto& rec : week_records) {
++                    if (rec.ruz_room_id.empty()) rec.ruz_room_id = room.id;
++                    if (rec.room_name.empty()) rec.room_name = room.name;
++                    rec.ruz_building_id = room.building_id;
++                    rec.building_name = room.building_name;
++                    rec.building_address = room.building_address;
++                    rec.compute_hash();
++                }
++            }
++            return week_records;
++        }));
++    }
++
++    for (auto& f : futures) {
++        auto week_records = f.get();
++        records.insert(records.end(), std::make_move_iterator(week_records.begin()), std::make_move_iterator(week_records.end()));
+     }
+     return records;
+ }

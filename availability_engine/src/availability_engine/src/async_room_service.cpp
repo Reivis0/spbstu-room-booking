@@ -1,12 +1,58 @@
 #include "async_room_service.hpp"
 #include <grpcpp/server_builder.h>
+#include <map>
+
+// Helper to manage trace_id in logs
+class TraceContextGuard {
+public:
+    TraceContextGuard(grpc::ServerContext* context) {
+        const auto& metadata = context->client_metadata();
+        
+        // Try b3 single header first
+        auto it = metadata.find("b3");
+        if (it != metadata.end()) {
+            std::string b3(it->second.data(), it->second.size());
+            size_t dash = b3.find('-');
+            if (dash != std::string::npos) {
+                Logger::setTraceId(b3.substr(0, dash));
+                return;
+            }
+            Logger::setTraceId(b3);
+            return;
+        }
+
+        // Try x-b3-traceid
+        it = metadata.find("x-b3-traceid");
+        if (it != metadata.end()) {
+            Logger::setTraceId(std::string(it->second.data(), it->second.size()));
+            return;
+        }
+
+        // Try traceparent
+        it = metadata.find("traceparent");
+        if (it != metadata.end()) {
+            std::string tp(it->second.data(), it->second.size());
+            if (tp.size() >= 35 && tp.substr(0, 2) == "00") {
+                Logger::setTraceId(tp.substr(3, 32));
+                return;
+            }
+        }
+        
+        Logger::setTraceId(Logger::generateTraceId());
+    }
+    ~TraceContextGuard() {
+        Logger::clearTraceId();
+    }
+};
 
 AsyncRoomService::AsyncRoomService(std::shared_ptr<RedisAsyncClient> redis_client,
                                  std::shared_ptr<PostgreSQLAsyncClient> pg_client,
-                                 std::shared_ptr<NatsAsyncClient> nats_client)
+                                 std::shared_ptr<NatsAsyncClient> nats_client,
+                                 std::shared_ptr<PqxxConnectionPool> pqxx_pool)
     : redis_client_(std::move(redis_client)),
       pg_client_(std::move(pg_client)),
-      nats_client_(std::move(nats_client)) {}
+      nats_client_(std::move(nats_client)),
+      pqxx_pool_(std::move(pqxx_pool)) {}
 
 AsyncRoomService::~AsyncRoomService() {
     shutdown();
@@ -55,60 +101,129 @@ void AsyncRoomService::shutdown() {
 grpc::Status AsyncRoomService::ComputeIntervals(grpc::ServerContext* context, 
                                               const room_service::ComputeIntervalsRequest* request,
                                               room_service::ComputeIntervalsResponse* response) {
-    LOG_INFO("gRPC: ComputeIntervals called for room " + request->room_id());
-    // TODO: Implement actual logic
+    TraceContextGuard guard(context);
+    LOG_INFO("gRPC: ComputeIntervals called for room " + request->room_id() + 
+             " date=" + request->date() + " window=" + request->start_time() + "-" + request->end_time());
+
+    std::string start_full = request->date() + " " + request->start_time() + "+00";
+    std::string end_full = request->date() + " " + request->end_time() + "+00";
+
+    std::vector<Booking> conflicts;
+
+    try {
+        auto conn = pqxx_pool_->acquire();
+        pqxx::work txn(*conn);
+
+        std::string query = 
+            "SELECT id::text, starts_at::text, ends_at::text, user_id::text, 'Booking'::text, status::text "
+            "FROM bookings "
+            "WHERE room_id = $1 "
+            "  AND status = 'confirmed' "
+            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz) "
+            "UNION ALL "
+            "SELECT id::text, starts_at::text, ends_at::text, '00000000-0000-0000-0000-000000000000'::text, subject, 'confirmed'::text "
+            "FROM schedules_import "
+            "WHERE room_id = $1 "
+            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz)";
+        
+        pqxx::result res = txn.exec_params(query, request->room_id(), start_full, end_full);
+        
+        for (auto row : res) {
+            Booking b;
+            b.id = row[0].c_str();
+            b.start_time = row[1].c_str();
+            b.end_time = row[2].c_str();
+            b.user_id = row[3].c_str();
+            b.notes = row[4].c_str();
+            b.status = row[5].c_str();
+            conflicts.push_back(std::move(b));
+        }
+        
+        txn.commit();
+        pqxx_pool_->release(std::move(conn));
+    } catch (const std::exception& e) {
+        LOG_ERROR(std::string("pqxx exception in ComputeIntervals: ") + e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL, "DB query failed");
+    }
+
+    // Sort conflicts by start time
+    std::sort(conflicts.begin(), conflicts.end(), [](const Booking& a, const Booking& b) {
+        return a.start_time < b.start_time;
+    });
+
+    // Merge overlapping intervals if any (simplified)
+    // Then calculate free gaps
+    std::string current_start = request->date() + " " + request->start_time();
+    for (const auto& c : conflicts) {
+        if (c.start_time > current_start) {
+            auto* slot = response->add_available_slots();
+            slot->set_start_time(current_start.substr(11, 5));
+            slot->set_end_time(c.start_time.substr(11, 5));
+        }
+        if (c.end_time > current_start) {
+            current_start = c.end_time.substr(0, 16);
+        }
+    }
+
+    std::string request_end = request->date() + " " + request->end_time();
+    if (current_start < request_end) {
+        auto* slot = response->add_available_slots();
+        slot->set_start_time(current_start.substr(11, 5));
+        slot->set_end_time(request_end.substr(11, 5));
+    }
+
     return grpc::Status::OK;
 }
 
 grpc::Status AsyncRoomService::Validate(grpc::ServerContext* context,
                                       const room_service::ValidateRequest* request,
                                       room_service::ValidateResponse* response) {
+    TraceContextGuard guard(context);
     LOG_INFO("gRPC: Validate called for room=" + request->room_id() + 
              " date=" + request->date() + " interval=" + request->start_time() + "-" + request->end_time());
 
-    std::mutex mtx;
-    std::condition_variable cv;
-    bool done = false;
-    bool has_conflicts = false;
+    std::string start_full = request->date() + " " + request->start_time() + "+00";
+    std::string end_full = request->date() + " " + request->end_time() + "+00";
+
     std::vector<Booking> found_conflicts;
 
-    struct SyncConflictsCb : public IconflictsCb {
-        std::mutex& mtx;
-        std::condition_variable& cv;
-        bool& done;
-        bool& has_conflicts;
-        std::vector<Booking>& conflicts;
+    try {
+        auto conn = pqxx_pool_->acquire();
+        pqxx::work txn(*conn);
 
-        SyncConflictsCb(std::mutex& m, std::condition_variable& c, bool& d, bool& h, std::vector<Booking>& cf)
-            : mtx(m), cv(c), done(d), has_conflicts(h), conflicts(cf) {}
-
-        void onConflicts(Booking* rows, size_t n, bool ok, const char* err) override {
-            std::lock_guard<std::mutex> lock(mtx);
-            if (ok && n > 0) {
-                has_conflicts = true;
-                for (size_t i = 0; i < n; ++i) {
-                    conflicts.push_back(rows[i]);
-                }
-            }
-            done = true;
-            cv.notify_one();
+        std::string query = 
+            "SELECT id::text, starts_at::text, ends_at::text, user_id::text, 'Booking'::text, status::text "
+            "FROM bookings "
+            "WHERE room_id = $1 "
+            "  AND status = 'confirmed' "
+            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz) "
+            "UNION ALL "
+            "SELECT id::text, starts_at::text, ends_at::text, '00000000-0000-0000-0000-000000000000'::text, subject, 'confirmed'::text "
+            "FROM schedules_import "
+            "WHERE room_id = $1 "
+            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz)";
+        
+        pqxx::result res = txn.exec_params(query, request->room_id(), start_full, end_full);
+        
+        for (auto row : res) {
+            Booking b;
+            b.id = row[0].c_str();
+            b.start_time = row[1].c_str();
+            b.end_time = row[2].c_str();
+            b.user_id = row[3].c_str();
+            b.notes = row[4].c_str();
+            b.status = row[5].c_str();
+            found_conflicts.push_back(std::move(b));
         }
-    };
-
-    std::string start_full = request->date() + " " + request->start_time();
-    std::string end_full = request->date() + " " + request->end_time();
-
-    pg_client_->getConflictsByInterval(request->room_id().c_str(), 
-                                      start_full.c_str(), 
-                                      end_full.c_str(),
-                                      std::make_unique<SyncConflictsCb>(mtx, cv, done, has_conflicts, found_conflicts));
-
-    std::unique_lock<std::mutex> lock(mtx);
-    if (!cv.wait_for(lock, std::chrono::seconds(5), [&] { return done; })) {
-        LOG_ERROR("gRPC: Validate TIMEOUT for room=" + request->room_id());
-        return grpc::Status(grpc::StatusCode::DEADLINE_EXCEEDED, "PostgreSQL query timeout");
+        
+        txn.commit();
+        pqxx_pool_->release(std::move(conn));
+    } catch (const std::exception& e) {
+        LOG_ERROR("gRPC: Validate pqxx exception: " + std::string(e.what()));
+        return grpc::Status(grpc::StatusCode::INTERNAL, "PostgreSQL query failed");
     }
 
+    bool has_conflicts = !found_conflicts.empty();
     LOG_INFO("gRPC: Validate completed for room=" + request->room_id() + 
              " is_valid=" + std::to_string(!has_conflicts) + 
              " conflicts=" + std::to_string(found_conflicts.size()));
@@ -122,8 +237,8 @@ grpc::Status AsyncRoomService::Validate(grpc::ServerContext* context,
     for (const auto& b : found_conflicts) {
         auto* c = response->add_conflicts();
         c->set_booking_id(b.id);
-        c->set_start_time(b.start_time);
-        c->set_end_time(b.end_time);
+        c->set_start_time(b.start_time.size() > 11 ? b.start_time.substr(11, 5) : b.start_time);
+        c->set_end_time(b.end_time.size() > 11 ? b.end_time.substr(11, 5) : b.end_time);
         c->set_status(b.status);
         c->set_user_id(b.user_id);
     }
@@ -131,9 +246,72 @@ grpc::Status AsyncRoomService::Validate(grpc::ServerContext* context,
     return grpc::Status::OK;
 }
 
-grpc::Status AsyncRoomService::OcupiedIntervals(grpc::ServerContext* context,
-                                              const room_service::OcupiedIntervalsRequest* request,
-                                              room_service::OcupiedIntervalsResponce* response) {
-    LOG_INFO("gRPC: OcupiedIntervals called for room " + request->room_id());
+grpc::Status AsyncRoomService::OccupiedIntervals(grpc::ServerContext* context,
+                                              const room_service::OccupiedIntervalsRequest* request,
+                                              room_service::OccupiedIntervalsResponse* response) {
+    TraceContextGuard guard(context);
+    LOG_INFO("gRPC: OccupiedIntervals called for room " + request->room_id() + " date=" + request->date());
+
+    std::string start_full = request->date() + " 00:00:00+00";
+    std::string end_full = request->date() + " 23:59:59+00";
+
+    std::vector<Booking> conflicts;
+
+    try {
+        auto conn = pqxx_pool_->acquire();
+        pqxx::work txn(*conn);
+
+        std::string query = 
+            "SELECT id::text, starts_at::text, ends_at::text, user_id::text, 'Booking'::text, status::text "
+            "FROM bookings "
+            "WHERE room_id = $1 "
+            "  AND status = 'confirmed' "
+            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz) "
+            "UNION ALL "
+            "SELECT id::text, starts_at::text, ends_at::text, '00000000-0000-0000-0000-000000000000'::text, subject, 'confirmed'::text "
+            "FROM schedules_import "
+            "WHERE room_id = $1 "
+            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz)";
+        
+        pqxx::result res = txn.exec_params(query, request->room_id(), start_full, end_full);
+        
+        for (auto row : res) {
+            Booking b;
+            b.id = row[0].c_str();
+            b.start_time = row[1].c_str();
+            b.end_time = row[2].c_str();
+            b.user_id = row[3].c_str();
+            b.notes = row[4].c_str();
+            b.status = row[5].c_str();
+            conflicts.push_back(std::move(b));
+        }
+        
+        txn.commit();
+        pqxx_pool_->release(std::move(conn));
+    } catch (const std::exception& e) {
+        LOG_ERROR(std::string("pqxx exception in OccupiedIntervals: ") + e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL, "DB query failed");
+    }
+
+    for (const auto& c : conflicts) {
+        auto* interval = response->add_intervals();
+        interval->set_booking_id(c.id);
+        interval->set_start_time(c.start_time.size() > 11 ? c.start_time.substr(11, 5) : c.start_time);
+        interval->set_end_time(c.end_time.size() > 11 ? c.end_time.substr(11, 5) : c.end_time);
+        interval->set_user_id(c.user_id);
+        interval->set_note(c.notes);
+    }
+
     return grpc::Status::OK;
+}
+
+grpc::Status AsyncRoomService::FindRoomChain(grpc::ServerContext* context,
+                                           const room_service::FindRoomChainRequest* request,
+                                           room_service::FindRoomChainResponse* response) {
+    TraceContextGuard guard(context);
+    LOG_INFO("gRPC: FindRoomChain called for date=" + request->date() + 
+             " building=" + request->building_id());
+    
+    // NOT IMPLEMENTED in MVP
+    return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "Not implemented in MVP");
 }

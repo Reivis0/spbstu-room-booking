@@ -2,6 +2,7 @@ package com.github.MadyarovGleb.booking_mvp.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -32,5 +33,22 @@ public class Room {
     public void prePersist() {
         if (id == null) id = UUID.randomUUID();
         if (features == null) features = "{}";
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Room other)) return false;
+        return id != null && id.equals(other.getId());
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "Room(id=" + id + ", name=" + name + ")";
     }
 }

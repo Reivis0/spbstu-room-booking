@@ -1,0 +1,15 @@
+[2026-04-25T07:28:14.889Z] [ruz-importer] [INFO ] [trace_id=--] - RUZ_Importer: RUZ Importer Starting
+[2026-04-25T07:28:14.890Z] [ruz-importer] [INFO ] [trace_id=--] - Constructed NATS URL: nats://nats:4222
+[2026-04-25T07:28:14.892Z] [ruz-importer] [INFO ] [trace_id=--] - NATS: Connected to NATS at nats://nats:4222
+[2026-04-25T07:28:14.893Z] [ruz-importer] [INFO ] [trace_id=--] - Redis connection started to redis:6379
+[2026-04-25T07:28:14.893Z] [ruz-importer] [INFO ] [trace_id=--] - RUS_IMPORTER: Config loaded from file.
+[2026-04-25T07:28:14.893Z] [ruz-importer] [INFO ] [trace_id=--] - CONFIG: Override ruz_importer.api_url from ENV RUZ_API_URL
+[2026-04-25T07:28:14.893Z] [ruz-importer] [INFO ] [trace_id=--] - CONFIG: Override import_interval_seconds from ENV RUZ_IMPORT_INTERVAL
+[2026-04-25T07:28:14.893Z] [ruz-importer] [INFO ] [trace_id=--] - RUZ_IMPORTER: Configured. Active universities: 3
+[2026-04-25T07:28:14.893Z] [ruz-importer] [INFO ] [trace_id=--] - RUZ_Importer: Service initialized. Starting main loop...
+[2026-04-25T07:28:14.893Z] [ruz-importer] [INFO ] [trace_id=--] - RUZ_Importer: Service initialized. Starting main loop...
+[2026-04-25T07:28:14.893Z] [ruz-importer] [INFO ] [trace_id=--] - RUZ_Importer: Connecting to PostgreSQL...
+[2026-04-25T07:28:15.397Z] [ruz-importer] [INFO ] [trace_id=--] - RUZ_Importer: PostgreSQL connected.
+[2026-04-25T07:28:15.397Z] [ruz-importer] [INFO ] [trace_id=18a988f0b5c40a110000] - RUZ_IMPORTER: Starting cycle for spbptu | 2026-04-25 -> 2026-10-22
+[2026-04-25T07:28:25.404Z] [ruz-importer] [WARN ] [trace_id=18a988f0b5c40a110000] - RUZ_IMPORTER:HTTP_CLIENT: Attempt 1 failed: Timeout was reached
+[2026-04-25T07:28:26.618Z] [ruz-importer] [INFO ] [trace_id=18a988f0b5c40a110000] - spbptu: 46 buildings found

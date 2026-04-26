@@ -1,3 +1,4 @@
+#include <unordered_set>
 #include "ruz_importer.hpp"
 #include "http_client.hpp"
 #include "data_processor.hpp"
@@ -38,16 +39,15 @@ std::string get_future_date_string(int days_ahead) {
 }
 
 std::string sha256(const std::string& data) {
+    static thread_local std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+    
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int lengthOfHash = 0;
 
-    EVP_MD_CTX* context = EVP_MD_CTX_new();
-    if(context != nullptr) {
-        if(EVP_DigestInit_ex(context, EVP_sha256(), nullptr)) {
-            EVP_DigestUpdate(context, data.c_str(), data.size());
-            EVP_DigestFinal_ex(context, hash, &lengthOfHash);
-        }
-        EVP_MD_CTX_free(context);
+    if(context) {
+        EVP_DigestInit_ex(context.get(), EVP_sha256(), nullptr);
+        EVP_DigestUpdate(context.get(), data.c_str(), data.size());
+        EVP_DigestFinal_ex(context.get(), hash, &lengthOfHash);
     }
 
     std::stringstream ss;
@@ -68,14 +68,10 @@ struct SyncGenericCb : public IGenericCb {
 };
 
 namespace {
-    RuzImporter* global_importer_instance = nullptr;
+    std::atomic<bool> stop_requested{false};
 
     void signal_handler(int signal) {
-        LOG_INFO("Signal handler invoked for signal: " + std::to_string(signal));
-        if (global_importer_instance) {
-            LOG_INFO("Calling shutdown from signal handler.");
-            global_importer_instance->shutdown();
-        }
+        stop_requested.store(true, std::memory_order_relaxed);
     }
 }
 
@@ -88,7 +84,7 @@ RuzImporter::RuzImporter(std::shared_ptr<PostgreSQLAsyncClient> pg_client,
 {
     auto config = load_config();
 
-    config_.universities = {"leti", "spbptu", "spbgu"};
+    config_.universities = {"spbptu", "leti", "spbgu"};
     if (const char* env_u = std::getenv("RUZ_UNIVERSITIES")) {
         std::stringstream ss(env_u);
         std::string item;
@@ -99,6 +95,17 @@ RuzImporter::RuzImporter(std::shared_ptr<PostgreSQLAsyncClient> pg_client,
     }
 
     if (config.count("import_interval_seconds")) config_.import_interval_seconds = std::stoi(config.at("import_interval_seconds"));
+    
+    // Load per-university thread limits from environment
+    if (const char* env_spbpu = std::getenv("SPBPU_MAX_THREADS")) {
+        config_.max_parallel_per_uni["spbptu"] = std::stoi(env_spbpu);
+    }
+    if (const char* env_leti = std::getenv("LETI_MAX_THREADS")) {
+        config_.max_parallel_per_uni["leti"] = std::stoi(env_leti);
+    }
+    if (const char* env_spbgu = std::getenv("SPBGU_MAX_THREADS")) {
+        config_.max_parallel_per_uni["spbgu"] = std::stoi(env_spbgu);
+    }
 
     LOG_INFO("RUZ_IMPORTER: Configured. Active universities: " + std::to_string(config_.universities.size()));
 }
@@ -108,7 +115,6 @@ RuzImporter::~RuzImporter() {
 }
 
 void RuzImporter::start() {
-    global_importer_instance = this;
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
@@ -119,7 +125,7 @@ void RuzImporter::start() {
         if (m_pg_client) {
             LOG_INFO("RUZ_Importer: Connecting to PostgreSQL...");
             for (int i = 0; i < 20 && !m_pg_client->is_connected(); ++i) {
-                if (shutdown_) return;
+                if (stop_requested.load()) return;
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
             if (m_pg_client->is_connected()) {
@@ -161,29 +167,24 @@ void RuzImporter::run() {
 }
 
 void RuzImporter::main_loop() {
-    while (!shutdown_) {
-        std::vector<std::thread> threads;
+    while (!stop_requested.load() && !shutdown_) {
         for (const auto& uni : config_.universities) {
-            threads.emplace_back([this, uni]() {
-                try {
-                    runImportCycle(uni);
-                } catch (const std::exception& e) {
-                    LOG_ERROR("RUZ_IMPORTER: Error in cycle " + uni + ": " + e.what());
-                }
-            });
-        }
-        
-        for (auto& t : threads) {
-            if (t.joinable()) t.join();
+            if (stop_requested.load() || shutdown_) break;
+            try {
+                runImportCycle(uni);
+            } catch (const std::exception& e) {
+                LOG_ERROR("RUZ_IMPORTER: Error in cycle " + uni + ": " + e.what());
+            }
         }
 
-        if (shutdown_) break;
+        if (stop_requested.load() || shutdown_) break;
 
         LOG_INFO("RUZ_IMPORTER: Waiting " + std::to_string(config_.import_interval_seconds) + "s...");
         std::unique_lock<std::mutex> lock(m_shutdown_mutex);
         m_shutdown_cv.wait_for(lock, std::chrono::seconds(config_.import_interval_seconds), 
-                               [this]() { return shutdown_.load(); });
+                               [this]() { return stop_requested.load() || shutdown_.load(); });
     }
+    LOG_INFO("RUZ_IMPORTER: Main loop terminated.");
 }
 
 RuzImporter::ImportRange RuzImporter::calcImportRange(const std::string& university_id) {
@@ -191,74 +192,82 @@ RuzImporter::ImportRange RuzImporter::calcImportRange(const std::string& univers
 }
 
 void RuzImporter::runImportCycle(const std::string& university_id) {
-    auto parser = ParserFactory::create(university_id);
-    auto range = calcImportRange(university_id);
+    Logger::setTraceId(Logger::generateTraceId());
+    try {
+        auto range = calcImportRange(university_id);
+        LOG_INFO("RUZ_IMPORTER: Starting cycle for " + university_id + " | " + range.date_from + " -> " + range.date_to);
     
-    LOG_INFO("RUZ_IMPORTER: Starting cycle for " + university_id + " | " + range.date_from + " -> " + range.date_to);
-    
-    if (university_id == "leti") {
-        auto leti = dynamic_cast<LetiParser*>(parser.get());
-        if (!leti) {
-            LOG_ERROR("Failed to cast to LetiParser");
-            return;
-        }
-        auto records = leti->fetchAll();
-        int64_t saved = saveRecords(university_id, records);
-        LOG_INFO("RUZ_IMPORTER: Cycle OK for leti. Saved: " + std::to_string(saved));
-        syncRoomsAndBuildings(university_id);
-        invalidateCache(university_id);
-        return;
-    }
-    
-    auto buildings = parser->fetchBuildingList();
-    LOG_INFO(university_id + ": " + std::to_string(buildings.size()) + " buildings found");
-    
-    int64_t total = 0;
-    int building_idx = 0;
-    
-    for (const auto& building : buildings) {
-        if (shutdown_) break;
-        building_idx++;
-        auto all_rooms = parser->fetchRoomList(building.id);
-        for (auto& r : all_rooms) {
-            r.building_name = building.name;
-            r.building_address = building.address;
-        }
-        int total_rooms = all_rooms.size();
-        int processed = 0;
-        
-        for (int i = 0; i < total_rooms && !shutdown_; i += config_.room_batch_size) {
-            int end = std::min(i + config_.room_batch_size, total_rooms);
-            
-            for (int j = i; j < end && !shutdown_; j++) {
-                const auto& room = all_rooms[j];
-                
-                if (config_.full_sync_on_empty && isRoomImported(university_id, room.id)) {
-                    processed++;
-                    continue;
-                }
-                
-                try {
-                    auto records = parser->fetchRoomSchedule(room, range.date_from, range.date_to);
-                    int64_t saved = saveRecords(university_id, records);
-                    total += saved;
-                    processed++;
-                } catch (const std::exception& e) {
-                    LOG_WARN(university_id + ": room " + room.id + " failed: " + e.what());
-                }
-                
-                std::this_thread::sleep_for(std::chrono::milliseconds(config_.rate_limit_ms));
+        if (university_id == "leti") {
+            auto parser = ParserFactory::create(university_id);
+            auto leti = dynamic_cast<LetiParser*>(parser.get());
+            if (leti) {
+                auto records = leti->fetchAll();
+                int64_t saved = saveRecords(university_id, records);
+                LOG_INFO("RUZ_IMPORTER: Cycle OK for leti. Saved: " + std::to_string(saved));
+            } else {
+                LOG_ERROR("Failed to cast to LetiParser");
             }
-            LOG_INFO(university_id + ": building " + std::to_string(building_idx) + "/" + std::to_string(buildings.size()) + " | rooms " + std::to_string(processed) + "/" + std::to_string(total_rooms) + " | records: " + std::to_string(total));
+        } else {
+            auto base_parser = ParserFactory::create(university_id);
+            auto buildings = base_parser->fetchBuildingList();
+            LOG_INFO(university_id + ": " + std::to_string(buildings.size()) + " buildings found");
+            
+            std::atomic<int64_t> total{0};
+            int building_idx = 0;
+            
+            for (const auto& building : buildings) {
+                if (shutdown_) break;
+                building_idx++;
+                auto all_rooms = base_parser->fetchRoomList(building.id);
+                for (auto& r : all_rooms) {
+                    r.building_name = building.name;
+                    r.building_address = building.address;
+                }
+                int total_rooms = all_rooms.size();
+                std::atomic<int> processed{0};
+                
+                const int max_parallel = config_.getMaxParallel(university_id); // Per-university limit
+                
+                LOG_INFO(university_id + ": Using max_parallel=" + std::to_string(max_parallel) + " for this university");
+                
+                for (int i = 0; i < total_rooms && !shutdown_; i += max_parallel) {
+                    std::vector<std::future<void>> futures;
+                    int batch_end = std::min(i + max_parallel, total_rooms);
+                    
+                    for (int j = i; j < batch_end && !shutdown_; j++) {
+                        futures.push_back(std::async(std::launch::async, [this, university_id, &all_rooms, j, range, &total, &processed]() {
+                            if (shutdown_) return;
+                            const auto& room = all_rooms[j];
+                            auto thread_parser = ParserFactory::create(university_id);
+                            
+                            try {
+                                auto records = thread_parser->fetchRoomSchedule(room, range.date_from, range.date_to);
+                                int64_t saved = saveRecords(university_id, records);
+                                total += saved;
+                            } catch (const std::exception& e) {
+                                LOG_WARN(university_id + ": room " + room.id + " failed: " + e.what());
+                            }
+                            processed++;
+                        }));
+                    }
+                    
+                    for (auto& f : futures) f.get();
+                    LOG_INFO(university_id + ": building " + std::to_string(building_idx) + "/" + std::to_string(buildings.size()) + " | rooms " + std::to_string(processed.load()) + "/" + std::to_string(total_rooms) + " | records: " + std::to_string(total.load()));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(config_.rate_limit_ms));
+                }
+            }
+            LOG_INFO("RUZ_IMPORTER: Cycle finished for " + university_id + ". Total saved: " + std::to_string(total.load()));
         }
+        syncRoomsAndBuildings(university_id);
+        if (m_nats_client) m_nats_client->publishScheduleRefreshed(university_id, get_current_date_string());
+        invalidateCache(university_id);
+    } catch (const std::exception& e) {
+        LOG_ERROR("RUZ_IMPORTER: Fatal exception in cycle: " + std::string(e.what()));
     }
-    LOG_INFO("RUZ_IMPORTER: Cycle OK for " + university_id + ". Saved: " + std::to_string(total));
-    syncRoomsAndBuildings(university_id);
-    invalidateCache(university_id);
+    Logger::clearTraceId();
 }
 
 bool RuzImporter::isRoomImported(const std::string& uni_id, const std::string& room_id) {
-    // В MVP всегда возвращаем false, чтобы сделать full scan
     return false;
 }
 
@@ -274,17 +283,25 @@ int64_t RuzImporter::saveRecords(const std::string& university_id, std::vector<S
     
     int64_t total = 0;
     std::vector<ScheduleRecord> buf;
-    buf.reserve(config_.insert_batch_size);
+    const size_t batch_size = 200; 
+    buf.reserve(batch_size);
+    std::unordered_set<std::string> unique_slots;
     
     for (auto& r : records) {
+        std::string slot_key = r.ruz_room_id + "|" + r.starts_at;
+        if (!unique_slots.insert(slot_key).second) {
+            continue; // Skip duplicates for the same room and start time
+        }
+
         r.university_id = university_id;
         r.data_hash = computeHash(r);
         buf.push_back(std::move(r));
         
-        if (buf.size() >= (size_t)config_.insert_batch_size) {
+        if (buf.size() >= batch_size) {
             insertBatch(buf);
             total += buf.size();
             buf.clear();
+            buf.reserve(batch_size);
         }
     }
     
@@ -299,15 +316,31 @@ int64_t RuzImporter::saveRecords(const std::string& university_id, std::vector<S
 void RuzImporter::insertBatch(const std::vector<ScheduleRecord>& buf) {
     if (buf.empty()) return;
 
-    std::stringstream sql;
+    std::string sql;
+    sql.reserve(buf.size() * 512); 
+    
+    sql += "INSERT INTO schedules_import (university_id, subject, teacher, starts_at, ends_at, data_hash, raw_source, ruz_room_id, room_name, ruz_building_id, building_name, building_address, source, hash) VALUES ";
+    
     std::vector<std::string> params;
-    
-    sql << "INSERT INTO schedules_import (university_id, subject, teacher, starts_at, ends_at, data_hash, raw_source, ruz_room_id, room_name, ruz_building_id, building_name, building_address, source, hash) VALUES ";
-    
+    params.reserve(buf.size() * 14);
+
     for (size_t i = 0; i < buf.size(); ++i) {
         int p = i * 14 + 1;
-        if (i > 0) sql << ",";
-        sql << "($" << p << ",$" << p+1 << ",$" << p+2 << ",$" << p+3 << "::timestamptz,$" << p+4 << "::timestamptz,$" << p+5 << ",$" << p+6 << "::jsonb, $" << p+7 << ", $" << p+8 << ", $" << p+9 << ", $" << p+10 << ", $" << p+11 << ", $" << p+12 << ", $" << p+13 << ")";
+        if (i > 0) sql += ",";
+        sql += "($"; sql += std::to_string(p);
+        sql += ",$"; sql += std::to_string(p+1);
+        sql += ",$"; sql += std::to_string(p+2);
+        sql += ",$"; sql += std::to_string(p+3); sql += "::timestamptz,$"; 
+        sql += std::to_string(p+4); sql += "::timestamptz,$";
+        sql += std::to_string(p+5); sql += ",$";
+        sql += std::to_string(p+6); sql += "::jsonb, $";
+        sql += std::to_string(p+7); sql += ", $";
+        sql += std::to_string(p+8); sql += ", $";
+        sql += std::to_string(p+9); sql += ", $";
+        sql += std::to_string(p+10); sql += ", $";
+        sql += std::to_string(p+11); sql += ", $";
+        sql += std::to_string(p+12); sql += ", $";
+        sql += std::to_string(p+13); sql += ")";
         
         params.push_back(buf[i].university_id);
         params.push_back(buf[i].subject);
@@ -325,23 +358,44 @@ void RuzImporter::insertBatch(const std::vector<ScheduleRecord>& buf) {
         params.push_back(buf[i].data_hash);     // hash
     }
     
-    sql << " ON CONFLICT (university_id, data_hash) DO NOTHING";
+    sql += " ON CONFLICT (university_id, data_hash) DO NOTHING";
 
-    auto cb = std::make_unique<SyncGenericCb>();
-    auto fut = cb->promise.get_future();
-    
-    m_pg_client->execute(sql.str(), params, std::move(cb));
-    auto res = fut.get();
-    if (!res.first) {
-        LOG_ERROR("RuzImporter: DB Insert failed: " + res.second);
+    int retries = 3;
+    while (retries > 0 && !shutdown_) {
+        auto cb = std::make_unique<SyncGenericCb>();
+        auto fut = cb->promise.get_future();
+        
+        {
+            std::lock_guard<std::mutex> lock(m_db_mutex);
+            m_pg_client->execute(sql, params, std::move(cb));
+        }
+        
+        auto res = fut.get();
+
+        if (res.first) {
+            LOG_INFO("RuzImporter: DB Insert success: " + std::to_string(buf.size()) + " records.");
+            return; // Success
+        } else {
+            LOG_ERROR("RuzImporter: DB Insert failed: " + res.second + ". Retries left: " + std::to_string(retries-1));
+            
+            if (res.second.find("connection") != std::string::npos || 
+                res.second.find("closed") != std::string::npos ||
+                res.second.find("terminated") != std::string::npos) 
+            {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                retries--;
+            } else {
+                break;
+            }
+        }
     }
 }
 
 void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
     LOG_INFO("RUZ_IMPORTER: Syncing rooms/buildings for " + university_id + "...");
 
-    // Step 1: UPSERT buildings from schedules_import
-    // We use COALESCE(building_name, ruz_building_id) for name if name is missing
+    std::lock_guard<std::mutex> lock(m_db_mutex);
+
     m_pg_client->execute(R"(
         INSERT INTO buildings (id, university_id, ruz_id, name, address, code)
         SELECT
@@ -369,7 +423,6 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
             updated_at = now()
     )", {university_id}, std::make_unique<SyncGenericCb>());
 
-    // Step 2: UPSERT rooms from schedules_import
     m_pg_client->execute(R"(
         INSERT INTO rooms (id, university_id, building_id, ruz_id, name, code, capacity)
         SELECT
@@ -401,7 +454,6 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
             updated_at = now()
     )", {university_id}, std::make_unique<SyncGenericCb>());
 
-    // Step 3: Link room_id in schedules_import
     m_pg_client->execute(R"(
         UPDATE schedules_import si
         SET room_id = r.id
@@ -420,7 +472,6 @@ void RuzImporter::invalidateCache(const std::string& university_id) {
     
     LOG_INFO("RUZ_IMPORTER: Invalidating Redis cache for " + university_id);
     
-    // Invalidate global lists
     m_redis_client->del("rooms:all", std::make_unique<RedisCallbackImpl>([](redisReply* reply) {
         if (!reply) LOG_WARN("Redis del rooms:all failed");
     }));
@@ -428,7 +479,6 @@ void RuzImporter::invalidateCache(const std::string& university_id) {
         if (!reply) LOG_WARN("Redis del buildings:all failed");
     }));
     
-    // Invalidate university-specific lists (if any)
     m_redis_client->del("rooms:" + university_id, std::make_unique<RedisCallbackImpl>([university_id](redisReply* reply) {
         if (!reply) LOG_WARN("Redis del rooms:" + university_id + " failed");
     }));

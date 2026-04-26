@@ -10,47 +10,49 @@
 std::map<std::string, std::string> RedisAsyncClient::RedisConnector::read_config()
 {
     std::map<std::string, std::string> config;
+    
+    // Default values
+    config["booking_service.host"] = "127.0.0.1";
+    config["booking_service.port"] = "6379";
+    config["booking_service.password"] = "";
+    config["booking_service.connection_timeout"] = "5";
+
     std::ifstream file("configs/redis_config.ini");
-    
-    if (!file.is_open()) {
-        LOG_ERROR("Failed to open config file");
-        return config;
-    }
-    
-    std::string line, section;
-    while (getline(file, line)) 
-    {
-        line.erase(0, line.find_first_not_of(" \t"));
-        line.erase(line.find_last_not_of(" \t") + 1);
-        
-        if (line.empty() || line[0] == ';') continue;
-            
-        if (line[0] == '[' && line.back() == ']')
+    if (file.is_open()) {
+        std::string line, section;
+        while (getline(file, line)) 
         {
-            section = line.substr(1, line.size() - 2);
-        } 
-        else 
-        {
-            size_t pos = line.find('=');
-            if (pos != std::string::npos)
-            {
-                std::string key = line.substr(0, pos);
-                std::string value = line.substr(pos + 1);
-                
-                key.erase(0, key.find_first_not_of(" \t"));
-                key.erase(key.find_last_not_of(" \t") + 1);
-                value.erase(0, value.find_first_not_of(" \t"));
-                value.erase(value.find_last_not_of(" \t") + 1);
-                
-                config[section + "." + key] = value;
+            line.erase(0, line.find_first_not_of(" \t"));
+            line.erase(line.find_last_not_of(" \t") + 1);
+            if (line.empty() || line[0] == ';') continue;
+            if (line[0] == '[' && line.back() == ']') {
+                section = line.substr(1, line.size() - 2);
+            } else {
+                size_t pos = line.find('=');
+                if (pos != std::string::npos) {
+                    std::string key = line.substr(0, pos);
+                    std::string value = line.substr(pos + 1);
+                    key.erase(0, key.find_first_not_of(" \t"));
+                    key.erase(key.find_last_not_of(" \t") + 1);
+                    value.erase(0, value.find_first_not_of(" \t"));
+                    value.erase(value.find_last_not_of(" \t") + 1);
+                    config[section + "." + key] = value;
+                }
             }
         }
     }
+
+    // Override with ENV
+    if (const char* host = std::getenv("REDIS_HOST")) config["booking_service.host"] = host;
+    if (const char* port = std::getenv("REDIS_PORT")) config["booking_service.port"] = port;
+    if (const char* pass = std::getenv("REDIS_PASSWORD")) config["booking_service.password"] = pass;
+
     return config;
 }
 
 bool RedisAsyncClient::RedisConnector::setup_event_base()
 {
+    if (ev_base) return true;
     ev_base = event_base_new();
     return ev_base != nullptr;
 }
@@ -63,11 +65,6 @@ RedisAsyncClient::RedisConnector::RedisConnector()
     port = std::stoi(config["booking_service.port"]);
     password = config["booking_service.password"];
     connection_timeout = std::stoi(config["booking_service.connection_timeout"]);
-    
-    if (!setup_event_base())
-    {
-        LOG_ERROR("Failed to create event base");
-    }
 }
 
 RedisAsyncClient::RedisConnector::~RedisConnector()
@@ -80,6 +77,12 @@ RedisAsyncClient::RedisConnector::~RedisConnector()
 
 void RedisAsyncClient::begin_async_connect()
 {
+    if (m_connector.is_connected) return;
+    if (!m_connector.setup_event_base()) {
+        LOG_ERROR("Failed to create event base");
+        return;
+    }
+
     m_connector.context = redisAsyncConnect(m_connector.host.c_str(), m_connector.port);
     if (m_connector.context == nullptr || m_connector.context->err)
     {
@@ -108,34 +111,19 @@ void RedisAsyncClient::begin_async_connect()
 
     redisAsyncSetConnectCallback(m_connector.context, connectCallback);
     redisAsyncSetDisconnectCallback(m_connector.context, disconnectCallback);
-    LOG_INFO("Redis connection started");
+    LOG_INFO("Redis connection started to " + m_connector.host + ":" + std::to_string(m_connector.port));
 }
 
 RedisAsyncClient::RedisAsyncClient() {
     custom_disconnect_callback = nullptr;
-    begin_async_connect();
 }
 
 void RedisAsyncClient::disconnect() {
-    static bool is_disconnected = false; // Ensure disconnect is called only once
-
-    if (is_disconnected) {
-        LOG_WARN("Redis disconnect called multiple times.");
-        return;
-    }
-
     if (m_connector.is_connected && m_connector.context) {
         LOG_INFO("Disconnecting from Redis...");
         redisAsyncDisconnect(m_connector.context);
-        // Явно обновляем состояние
         m_connector.is_connected = false;
-        LOG_INFO("is_connected set to false in disconnect().");
-    } else {
-        LOG_WARN("Redis was not connected or context is null.");
     }
-
-    LOG_INFO("Disconnect process completed. is_connected: " + std::to_string(m_connector.is_connected));
-    is_disconnected = true;
 }
 
 RedisAsyncClient::~RedisAsyncClient()
@@ -422,18 +410,7 @@ void RedisAsyncClient::getProtobuf(const std::string& key, google::protobuf::Mes
 }
 
 void RedisAsyncClient::connect() {
-    {
-        std::ostringstream log_message;
-        log_message << "Attempting to connect to Redis server at " << m_connector.host << ":" << m_connector.port;
-        LOG_INFO(log_message.str());
-    }
-    if (!m_connector.setup_event_base()) {
-        LOG_ERROR("Failed to set up event base for Redis connection.");
-        return;
-    }
-    // Simulate connection logic for debugging
-    m_connector.is_connected = true;
-    LOG_INFO("Redis connection established successfully.");
+    begin_async_connect();
 }
 
 bool RedisAsyncClient::is_connected() const {

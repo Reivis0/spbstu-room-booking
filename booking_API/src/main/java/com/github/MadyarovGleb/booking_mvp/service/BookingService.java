@@ -16,8 +16,12 @@ import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngi
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
@@ -51,7 +55,12 @@ public class BookingService {
         this.redis = redis;
     }
 
-    @Transactional
+    @Retryable(
+            value = { CannotAcquireLockException.class, DataIntegrityViolationException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Booking createBooking(UUID userId, CreateBookingRequest req) {
         MDC.put("user_id", userId.toString());
         validateTimes(req);
@@ -68,13 +77,8 @@ public class BookingService {
                 .updatedAt(OffsetDateTime.now())
                 .build();
 
-        Booking saved;
-        try {
-            saved = bookingRepository.saveAndFlush(booking);
-        } catch (DataIntegrityViolationException ex) {
-            logger.warn("Booking creation failed due to schedule conflict");
-            throw new ConflictException("booking_conflict");
-        }
+        Booking saved = bookingRepository.saveAndFlush(booking);
+
         if (saved.getId() != null) {
             MDC.put("booking_id", saved.getId().toString());
         }

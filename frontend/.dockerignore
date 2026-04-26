@@ -1,13 +1,21 @@
-**/.git
-**/.env
-**/tmp
-**/bin
-**/*.test
-**/coverage.out
-**/testdata
-**/.idea
-**/.vscode
-**/docs
-**/build
-**/node_modules
-**/coverage
+# Build context ignore for Frontend (Node/React)
+.git
+.gitignore
+.env
+.idea
+.vscode
+*.swp
+*.bak
+
+# Node
+node_modules/
+npm-debug.log
+build/
+coverage/
+
+# Ignore other service directories
+availability_engine/
+booking_API/
+infrastructure/
+performance/
+docs/

@@ -2,164 +2,175 @@ package com.github.MadyarovGleb.booking_mvp.service;
 
 import room_service.*;
 import com.github.MadyarovGleb.booking_mvp.dto.RoomScheduleResponse;
-import com.github.MadyarovGleb.booking_mvp.entity.Booking;
-import com.github.MadyarovGleb.booking_mvp.entity.SchedulesImport;
-import com.github.MadyarovGleb.booking_mvp.repository.BookingRepository;
-import com.github.MadyarovGleb.booking_mvp.repository.SchedulesImportRepository;
+import com.github.MadyarovGleb.booking_mvp.dto.TimeSlotDto;
 import com.github.MadyarovGleb.booking_mvp.exception.NotFoundException;
 import com.github.MadyarovGleb.booking_mvp.entity.Room;
 import com.github.MadyarovGleb.booking_mvp.repository.RoomRepository;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class RoomService {
-
-    private static final Logger logger = LoggerFactory.getLogger(RoomService.class);
 
     private final RoomRepository roomRepository;
     private final AvailabilityEngineClient availability;
     private final RedisService redis;
-    private final BookingRepository bookingRepository;
-    private final SchedulesImportRepository schedulesImportRepository;
+    private final ExecutorService executorService = Executors.newFixedThreadPool(10);
 
     public RoomService(RoomRepository roomRepository,
                        AvailabilityEngineClient availability,
-                       RedisService redis,
-                       BookingRepository bookingRepository,
-                       SchedulesImportRepository schedulesImportRepository) {
+                       RedisService redis) {
         this.roomRepository = roomRepository;
         this.availability = availability;
         this.redis = redis;
-        this.bookingRepository = bookingRepository;
-        this.schedulesImportRepository = schedulesImportRepository;
     }
 
     public Room getById(UUID id) {
         MDC.put("room_id", id.toString());
-        String key = "room:metadata:" + id;
-        Room cached = redis.get(key, Room.class);
-        if (cached != null) {
-            logger.debug("Room metadata returned from cache");
-            return cached;
-        }
+        try {
+            String key = "room:metadata:" + id;
+            Room cached = redis.get(key, Room.class);
+            if (cached != null) {
+                log.debug("Room metadata returned from cache");
+                return cached;
+            }
 
-        Room room = roomRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Room not found: " + id));
-        redis.set(key, room, Duration.ofHours(1));
-        logger.info("Room metadata loaded from database and cached");
-        return room;
+            Room room = roomRepository.findById(id)
+                    .orElseThrow(() -> new NotFoundException("Room not found: " + id));
+            redis.set(key, room, Duration.ofHours(1));
+            log.info("Room metadata loaded from database and cached");
+            return room;
+        } finally {
+            MDC.remove("room_id");
+        }
     }
 
-    public List<Room> search(UUID buildingId, Integer capacityMin, Integer capacityMax,
-                             List<String> features, String search, String availableFrom, String availableTo) {
+    public Page<Room> search(UUID buildingId, Integer capacityMin, Integer capacityMax,
+                             List<String> features, String searchStr, String availableFrom, String availableTo, Pageable pageable) {
         if (buildingId != null) {
             MDC.put("building_id", buildingId.toString());
         }
 
-        List<Room> rooms = roomRepository.findAll(); // TODO: добавить фильтры по buildingId, capacity, features, search
+        try {
+            Page<Room> roomPage = roomRepository.findAll(pageable); // TODO: add DB-level filters
 
-        if (availableFrom != null && availableTo != null) {
-            rooms.removeIf(room ->
-                    availability.computeIntervals(
-                            room.getId().toString(),
-                            availableFrom.substring(0, 10), // дата YYYY-MM-DD
-                            availableFrom.substring(11, 16), // startTime HH:mm
-                            availableTo.substring(11, 16) // endTime HH:mm
-                    ).isEmpty()
-            );
+            if (availableFrom != null && availableTo != null) {
+                String date = availableFrom.substring(0, 10);
+                String startTime = availableFrom.substring(11, 16);
+                String endTime = availableTo.substring(11, 16);
+
+                List<CompletableFuture<Room>> futures = roomPage.getContent().stream()
+                        .map(room -> CompletableFuture.supplyAsync(() -> {
+                            List<TimeSlot> intervals = availability.computeIntervals(
+                                    room.getId().toString(), date, startTime, endTime
+                            );
+                            return intervals.isEmpty() ? null : room;
+                        }, executorService))
+                        .collect(Collectors.toList());
+
+                try {
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                            .get(5, TimeUnit.SECONDS);
+
+                    List<Room> availableRooms = futures.stream()
+                            .map(f -> f.getNow(null))
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toList());
+
+                    log.info("Room search completed count={}", availableRooms.size());
+                    return new PageImpl<>(availableRooms, pageable, roomPage.getTotalElements());
+                } catch (Exception e) {
+                    log.error("Batch availability check failed", e);
+                    return new PageImpl<>(Collections.emptyList(), pageable, 0);
+                }
+            }
+
+            log.info("Room search completed count={}", roomPage.getNumberOfElements());
+            return roomPage;
+        } finally {
+            MDC.remove("building_id");
         }
-
-        logger.info("Room search completed count={}", rooms.size());
-        return rooms;
     }
 
-    public List<TimeSlot> getAvailability(UUID roomId, String date, int minDurationMinutes) {
+    public List<TimeSlotDto> getAvailability(UUID roomId, String date, int minDurationMinutes) {
         MDC.put("room_id", roomId.toString());
+        try {
+            String startTime = "09:00";
+            String endTime = "21:00";
 
-        String startTime = "09:00";
-        String endTime = "21:00";
+            List<TimeSlot> slots = availability.computeIntervals(
+                    roomId.toString(), date, startTime, endTime
+            );
 
-        List<TimeSlot> slots = availability.computeIntervals(
-                roomId.toString(),
-                date,
-                startTime,
-                endTime
-        );
-
-        logger.info("Room availability computed date={} slots_count={} min_duration_minutes={}",
-                date, slots.size(), minDurationMinutes);
-        return slots;
+            log.info("Room availability computed date={} slots_count={}", date, slots.size());
+            return slots.stream()
+                    .map(slot -> TimeSlotDto.builder()
+                            .startTime(slot.getStartTime())
+                            .endTime(slot.getEndTime())
+                            .build())
+                    .collect(Collectors.toList());
+        } finally {
+            MDC.remove("room_id");
+        }
     }
 
     public RoomScheduleResponse getRoomSchedule(UUID roomId, String dateStr) {
         MDC.put("room_id", roomId.toString());
-        logger.info("Room schedule request started roomId={} date={}", roomId, dateStr);
+        try {
+            log.info("Room schedule request started roomId={} date={}", roomId, dateStr);
 
-        LocalDate date = LocalDate.parse(dateStr);
-        ZoneId zoneId = ZoneId.of("Europe/Moscow");
+            List<AvailabilityEngineClient.OccupiedSlot> occupiedIntervals = availability.occupiedIntervals(roomId.toString(), dateStr);
 
-        OffsetDateTime from = date.atStartOfDay(zoneId).toOffsetDateTime();
-        OffsetDateTime to = date.plusDays(1).atStartOfDay(zoneId).toOffsetDateTime();
+            List<RoomScheduleResponse.ScheduleSlot> occupied = occupiedIntervals.stream()
+                    .map(this::mapToScheduleSlot)
+                    .sorted(Comparator.comparing(RoomScheduleResponse.ScheduleSlot::getFrom))
+                    .collect(Collectors.toList());
 
-        List<SchedulesImport> imported = schedulesImportRepository.findByRoomIdAndDate(roomId, from, to);
-        List<Booking> bookings = bookingRepository.findInInterval(roomId, from, to);
+            List<RoomScheduleResponse.ScheduleSlot> allSlots = fillFreeGaps(occupied);
 
-        List<RoomScheduleResponse.ScheduleSlot> occupied = new ArrayList<>();
-        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
+            log.info("Room schedule computed successfully slots_count={}", allSlots.size());
 
-        for (SchedulesImport s : imported) {
-            occupied.add(RoomScheduleResponse.ScheduleSlot.builder()
-                    .from(s.getStartsAt().atZoneSameInstant(zoneId).format(timeFormatter))
-                    .to(s.getEndsAt().atZoneSameInstant(zoneId).format(timeFormatter))
-                    .type("schedule")
-                    .label(s.getSubject() != null ? s.getSubject() : "Занятие")
-                    .status("occupied")
-                    .build());
+            return RoomScheduleResponse.builder()
+                    .date(dateStr)
+                    .roomId(roomId)
+                    .slots(allSlots)
+                    .build();
+        } finally {
+            MDC.remove("room_id");
         }
+    }
 
-        for (Booking b : bookings) {
-            occupied.add(RoomScheduleResponse.ScheduleSlot.builder()
-                    .from(b.getStartsAt().atZoneSameInstant(zoneId).format(timeFormatter))
-                    .to(b.getEndsAt().atZoneSameInstant(zoneId).format(timeFormatter))
-                    .type("booking")
-                    .label("Забронировано")
-                    .status("occupied")
-                    .build());
-        }
+    private RoomScheduleResponse.ScheduleSlot mapToScheduleSlot(AvailabilityEngineClient.OccupiedSlot slot) {
+        boolean isImport = slot.getBookingId().startsWith("import_");
+        return RoomScheduleResponse.ScheduleSlot.builder()
+                .from(slot.getStartTime())
+                .to(slot.getEndTime())
+                .type(isImport ? "schedule" : "booking")
+                .label(slot.getNote() != null && !slot.getNote().isEmpty() ? slot.getNote() :
+                        (isImport ? "Занятие" : "Забронировано"))
+                .status("occupied")
+                .build();
+    }
 
-        occupied.sort(Comparator.comparing(RoomScheduleResponse.ScheduleSlot::getFrom));
-
+    private List<RoomScheduleResponse.ScheduleSlot> fillFreeGaps(List<RoomScheduleResponse.ScheduleSlot> occupied) {
         List<RoomScheduleResponse.ScheduleSlot> allSlots = new ArrayList<>();
-        String dayStart = "08:00";
+        String current = "08:00";
         String dayEnd = "22:00";
-        String current = dayStart;
 
         for (RoomScheduleResponse.ScheduleSlot slot : occupied) {
             if (current.compareTo(slot.getFrom()) < 0) {
-                allSlots.add(RoomScheduleResponse.ScheduleSlot.builder()
-                        .from(current)
-                        .to(slot.getFrom())
-                        .type("free")
-                        .label("")
-                        .status("free")
-                        .build());
+                allSlots.add(createFreeSlot(current, slot.getFrom()));
             }
             allSlots.add(slot);
             if (current.compareTo(slot.getTo()) < 0) {
@@ -168,22 +179,13 @@ public class RoomService {
         }
 
         if (current.compareTo(dayEnd) < 0) {
-            allSlots.add(RoomScheduleResponse.ScheduleSlot.builder()
-                    .from(current)
-                    .to(dayEnd)
-                    .type("free")
-                    .label("")
-                    .status("free")
-                    .build());
+            allSlots.add(createFreeSlot(current, dayEnd));
         }
+        return allSlots;
+    }
 
-        logger.info("Room schedule computed successfully roomId={} date={} slots_count={}",
-                roomId, dateStr, allSlots.size());
-
-        return RoomScheduleResponse.builder()
-                .date(dateStr)
-                .roomId(roomId)
-                .slots(allSlots)
-                .build();
+    private RoomScheduleResponse.ScheduleSlot createFreeSlot(String from, String to) {
+        return RoomScheduleResponse.ScheduleSlot.builder()
+                .from(from).to(to).type("free").label("").status("free").build();
     }
 }

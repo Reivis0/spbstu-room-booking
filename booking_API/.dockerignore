@@ -1,13 +1,21 @@
-**/.git
-**/.env
-**/tmp
-**/bin
-**/*.test
-**/coverage.out
-**/testdata
-**/.idea
-**/.vscode
-**/docs
-**/target
-**/.m2
-**/node_modules
+# Build context ignore for Booking API (Java/Maven)
+.git
+.gitignore
+.env
+.idea
+.vscode
+*.iml
+*.swp
+*.bak
+
+# Maven
+target/
+.mvn/wrapper/maven-wrapper.jar
+!target/*.jar
+
+# Ignore other service directories
+availability_engine/
+frontend/
+infrastructure/
+performance/
+docs/

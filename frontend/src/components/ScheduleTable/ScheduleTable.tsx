@@ -13,7 +13,11 @@ interface ScheduleTableProps {
 
 const ScheduleTable: React.FC<ScheduleTableProps> = ({ rows }) => {
   if (!rows || rows.length === 0) {
-    return null;
+    return (
+      <div className="schedule-table--empty">
+        <p>Расписание на этот день отсутствует или не загружено.</p>
+      </div>
+    );
   }
 
   return (
@@ -27,16 +31,16 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({ rows }) => {
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, index) => (
-          <tr key={`${row.room}-${index}`}>
-            <td>{row.room}</td>
-            <td>{row.time}</td>
+        {(rows || []).map((row, index) => (
+          <tr key={`${row?.room || 'room'}-${index}`}>
+            <td>{row?.room || '—'}</td>
+            <td>{row?.time || '—'}</td>
             <td>
-              <span className={`status status--${row.status}`}>
-                {row.status === 'free' ? 'Свободно' : 'Занято'}
+              <span className={`status status--${row?.status || 'unknown'}`}>
+                {row?.status === 'free' ? 'Свободно' : row?.status === 'busy' ? 'Занято' : 'Неизвестно'}
               </span>
             </td>
-            <td>{row.event}</td>
+            <td>{row?.event || 'Нет данных'}</td>
           </tr>
         ))}
       </tbody>

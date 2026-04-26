@@ -216,10 +216,19 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       NATS_HOST: nats
       NATS_PORT: 4222
       RUZ_API_URL: https://ruz.spbstu.ru/api/v1/ruz
       RUZ_IMPORT_INTERVAL: 3600
+      # Per-university concurrency limits
+      SPBPU_MAX_THREADS: 10
+      SPBGU_MAX_THREADS: 2
+      LETI_MAX_THREADS: 5
+      # Proactive rate limiting (delay before each request)
+      RUZ_DELAY_MS: 300
     depends_on:
       postgres:
         condition: service_healthy
@@ -258,7 +267,7 @@ services:
       - booking-net
     restart: unless-stopped
 
-  volumes:
+  frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile

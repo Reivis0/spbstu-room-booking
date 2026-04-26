@@ -56,7 +56,12 @@ std::vector<BuildingInfo> SpbguParser::fetchBuildingList() {
         BuildingInfo info;
         info.id = b.get("Oid", "").asString();
         info.name = b.get("DisplayName1", b.get("City", "")).asString();
-        info.address = b.get("matches", b.get("City", "")).asString(); 
+        
+        std::string addr = b.get("Address", "").asString();
+        if (addr.empty()) {
+            addr = info.name; // In SPbU, name often contains the address
+        }
+        info.address = addr;
         buildings.push_back(info);
     }
     return buildings;

@@ -45,7 +45,7 @@ std::vector<ScheduleRecord> LetiParser::parse(const std::string& json_str) {
 
     int group_count = 0;
     for (const auto& group_key : json.getMemberNames()) {
-        if (++group_count > 1000) break; // Increased from 500
+        if (++group_count > 3000) break; // Increased from 1000 to ensure full coverage
 
         const auto& group = json[group_key];
         if (!group.isObject() || !group.isMember("days")) continue;

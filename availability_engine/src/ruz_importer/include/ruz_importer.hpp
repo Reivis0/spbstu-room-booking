@@ -25,6 +25,18 @@ struct ImportConfig {
     bool full_sync_on_empty = true;
     int import_interval_seconds = 1800;
     std::vector<std::string> universities;
+    
+    // Per-university concurrency limits
+    std::map<std::string, int> max_parallel_per_uni = {
+        {"spbptu", 10},
+        {"leti", 5},
+        {"spbgu", 2}
+    };
+    
+    int getMaxParallel(const std::string& uni) const {
+        auto it = max_parallel_per_uni.find(uni);
+        return (it != max_parallel_per_uni.end()) ? it->second : 5;
+    }
 };
 
 class RuzImporter {
@@ -60,6 +72,7 @@ private:
     
     std::atomic<bool> shutdown_{false};
     std::mutex m_shutdown_mutex;
+    std::mutex m_db_mutex;
     std::condition_variable m_shutdown_cv;
     
     ImportConfig config_;

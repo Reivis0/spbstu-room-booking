@@ -1,3 +1,20 @@
+export interface Page<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+  first: boolean;
+  last: boolean;
+  empty: boolean;
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  status: string;
+  message?: string;
+}
+
 export interface Building {
   id: string;
   code: string;

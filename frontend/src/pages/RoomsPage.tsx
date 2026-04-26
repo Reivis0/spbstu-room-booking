@@ -246,7 +246,8 @@ const RoomsPage: React.FC = () => {
           <div className="room-cards" style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1.5rem'
+            gap: '1.5rem',
+            alignItems: 'flex-start'
           }}>
             {filteredRooms.length === 0 ? (
               <EmptyState message="По выбранным параметрам аудиторий не найдено. Попробуйте изменить фильтры." />

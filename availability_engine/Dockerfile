@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjsoncpp-dev \
     libgtest-dev \
     libgmock-dev \
+    libpqxx-dev \
     ccache \
     && rm -rf /var/lib/apt/lists/*
 
@@ -71,13 +72,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     libcurl4 \
     libjsoncpp25 \
+    libpqxx-6.4 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY --from=deps /usr/local/lib/libnats* /usr/lib/
-COPY --from=build /app/build/bin/availability_engine .
-COPY --from=build /app/build/bin/ruz_importer .
+# Create non-root user
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser && \
+    chown appuser:appgroup /app
+
+COPY --from=deps --chown=appuser:appgroup /usr/local/lib/libnats* /usr/lib/
+COPY --from=build --chown=appuser:appgroup /app/build/bin/availability_engine .
+COPY --from=build --chown=appuser:appgroup /app/build/bin/ruz_importer .
+
+USER appuser
 
 RUN mkdir configs
 

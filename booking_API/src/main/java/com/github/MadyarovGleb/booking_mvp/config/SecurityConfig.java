@@ -36,7 +36,7 @@ public class SecurityConfig {
                     logger.warn("Authentication entry point triggered for request_path={} reason={}",
                             request.getRequestURI(),
                             authException.getClass().getSimpleName());
-                    response.sendError(403, "Access Denied: " + authException.getMessage());
+                    response.sendError(401, "Unauthorized: " + authException.getMessage());
                 }))
                 .addFilterBefore(new JwtAuthenticationFilter(jwtUtil), UsernamePasswordAuthenticationFilter.class);
 

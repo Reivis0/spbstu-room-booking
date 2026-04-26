@@ -479,5 +479,9 @@ void PostgreSQLAsyncClient::FinishGeneric_(PostgreSQLAsyncClient* self, PendingQ
 
 
 void PostgreSQLAsyncClient::connect() {
-    // Реализация метода connect
+    if (m_connect.connection) {
+        disconnect();
+    }
+    LOG_INFO("PostgreSQL: Initiating connection...");
+    begin_async_connect();
 }

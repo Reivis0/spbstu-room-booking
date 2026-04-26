@@ -1,13 +1,23 @@
-**/.git
-**/.env
-**/tmp
-**/bin
-**/*.test
-**/coverage.out
-**/testdata
-**/.idea
-**/.vscode
-**/docs
-**/target
-**/.m2
-**/node_modules
+# Build context ignore for Availability Engine (C++)
+.git
+.gitignore
+.env
+.idea
+.vscode
+*.swp
+*.bak
+
+# C++
+build/
+bin/
+*.o
+*.a
+*.so
+.ccache/
+
+# Ignore other service directories
+booking_API/
+frontend/
+infrastructure/
+performance/
+docs/

@@ -52,7 +52,7 @@ message ValidateResponse
   ValidationDetails details = 3;
 }
 
-message OcupiedIntervalsRequest
+message OccupiedIntervalsRequest
 {
   string room_id = 1;
   string date = 2;
@@ -67,7 +67,7 @@ message Interval
   string note = 5;
 }
 
-message OcupiedIntervalsResponce
+message OccupiedIntervalsResponse
 {
   repeated Interval intervals = 1;
 }
@@ -96,6 +96,6 @@ service RoomService
 {
   rpc ComputeIntervals(ComputeIntervalsRequest) returns (ComputeIntervalsResponse);
   rpc Validate(ValidateRequest) returns (ValidateResponse);
-  rpc OcupiedIntervals(OcupiedIntervalsRequest) returns (OcupiedIntervalsResponce);
+  rpc OccupiedIntervals(OccupiedIntervalsRequest) returns (OccupiedIntervalsResponse);
   rpc FindRoomChain(FindRoomChainRequest) returns (FindRoomChainResponse);
 }

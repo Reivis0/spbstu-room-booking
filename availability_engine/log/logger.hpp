@@ -28,17 +28,26 @@ public:
     return instance;
   }
 
-  void init() {};
+  void init(const std::string& serviceName) {
+      m_serviceName = serviceName;
+  };
   void log(LogLevel level, const std::string& message);
 
+  static void setTraceId(const std::string& traceId);
+  static void clearTraceId();
+  static std::string generateTraceId();
+
 private:
-  Logger() = default;
+  Logger() : m_serviceName("unknown-cpp-service") {}
   ~Logger() {};
 
   std::string getTimestamp();
   std::string levelToString(LogLevel level);
+  std::string getTraceId();
 
   std::mutex m_mutex;
+  std::string m_serviceName;
+  static thread_local std::string t_traceId;
 };
 
 #define LOG_DEBUG(msg) Logger::getInstance().log(LogLevel::DEBUG, msg)

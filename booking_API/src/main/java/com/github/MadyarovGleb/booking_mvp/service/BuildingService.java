@@ -6,10 +6,11 @@ import com.github.MadyarovGleb.booking_mvp.repository.BuildingRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -25,17 +26,9 @@ public class BuildingService {
         this.redis = redis;
     }
 
-    public List<Building> findAll() {
-        String key = "buildings:all";
-        List<Building> cached = redis.get(key, List.class);
-        if (cached != null) {
-            logger.debug("Buildings list returned from cache count={}", cached.size());
-            return cached;
-        }
-
-        List<Building> buildings = repo.findAll();
-        redis.set(key, buildings, Duration.ofHours(24));
-        logger.info("Buildings list loaded from database and cached count={}", buildings.size());
+    public Page<Building> findAll(Pageable pageable) {
+        Page<Building> buildings = repo.findAll(pageable);
+        logger.info("Buildings page loaded from database count={}", buildings.getNumberOfElements());
         return buildings;
     }
 
