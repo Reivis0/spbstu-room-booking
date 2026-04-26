@@ -7,11 +7,13 @@ import com.github.MadyarovGleb.booking_mvp.exception.NotFoundException;
 import com.github.MadyarovGleb.booking_mvp.entity.Room;
 import com.github.MadyarovGleb.booking_mvp.repository.RoomRepository;
 import com.github.MadyarovGleb.booking_mvp.service.availability.AvailabilityEngineClient;
+import com.github.MadyarovGleb.booking_mvp.specification.RoomSpecification;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -62,8 +64,19 @@ public class RoomService {
             MDC.put("building_id", buildingId.toString());
         }
 
+        // Convert frontend university code to database code
+        String dbUniversityCode = com.github.MadyarovGleb.booking_mvp.util.UniversityMapper.toDbCode(university);
+        
+        if (dbUniversityCode != null) {
+            MDC.put("university", dbUniversityCode);
+            log.debug("Filtering rooms by university: {} (mapped from {})", dbUniversityCode, university);
+        }
+
         try {
-            Page<Room> roomPage = roomRepository.findAll(pageable); // TODO: add DB-level filters
+            Specification<Room> spec = RoomSpecification.withFilters(
+                    buildingId, dbUniversityCode, capacityMin, capacityMax, features, searchStr
+            );
+            Page<Room> roomPage = roomRepository.findAll(spec, pageable);
 
             if (availableFrom != null && availableTo != null) {
                 String date = availableFrom.substring(0, 10);

@@ -397,14 +397,15 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
     std::lock_guard<std::mutex> lock(m_db_mutex);
 
     m_pg_client->execute(R"(
-        INSERT INTO buildings (id, university_id, ruz_id, name, address, code)
+        INSERT INTO buildings (id, university_id, ruz_id, name, address, code, university_code)
         SELECT
             uuid_generate_v4(),
             university_id,
             ruz_building_id,
             COALESCE(NULLIF(building_name, ''), 'Building ' || ruz_building_id),
             COALESCE(building_address, ''),
-            'BUILDING_' || university_id || '_' || ruz_building_id
+            'BUILDING_' || university_id || '_' || ruz_building_id,
+            university_id
         FROM (
             SELECT DISTINCT
                 university_id,
@@ -420,11 +421,12 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
         DO UPDATE SET
             name = EXCLUDED.name,
             address = EXCLUDED.address,
+            university_code = EXCLUDED.university_code,
             updated_at = now()
     )", {university_id}, std::make_unique<SyncGenericCb>());
 
     m_pg_client->execute(R"(
-        INSERT INTO rooms (id, university_id, building_id, ruz_id, name, code, capacity)
+        INSERT INTO rooms (id, university_id, building_id, ruz_id, name, code, capacity, university_code)
         SELECT
             uuid_generate_v4(),
             si.university_id,
@@ -432,7 +434,8 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
             si.ruz_room_id,
             COALESCE(NULLIF(si.room_name, ''), 'Room ' || si.ruz_room_id),
             'ROOM_' || si.university_id || '_' || si.ruz_room_id,
-            30
+            30,
+            si.university_id
         FROM (
             SELECT DISTINCT
                 university_id,
@@ -451,6 +454,7 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
         DO UPDATE SET
             name = EXCLUDED.name,
             building_id = EXCLUDED.building_id,
+            university_code = EXCLUDED.university_code,
             updated_at = now()
     )", {university_id}, std::make_unique<SyncGenericCb>());
 

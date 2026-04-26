@@ -30,8 +30,11 @@ public class BuildingController {
             @RequestParam(required = false) String university,
             @PageableDefault(size = 20) Pageable pageable
     ) {
+        if (university != null) {
+            MDC.put("university", university);
+        }
         logger.info("Building list request started");
-        Page<Building> buildings = service.findAll(pageable);
+        Page<Building> buildings = service.findAll(university, pageable);
         logger.info("Building list request completed successfully count={}", buildings.getNumberOfElements());
         return ResponseEntity.ok(buildings);
     }
