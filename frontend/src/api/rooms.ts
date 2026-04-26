@@ -98,7 +98,7 @@ export const roomsApi = {
 
     let response;
     try {
-      response = await apiClient.get<Room[]>('/rooms', { params });
+      response = await apiClient.get<Room[] | { content: Room[] }>('/rooms', { params });
     } catch (error) {
       if (filters.university && shouldUseCatalogFallback(error)) {
         return mockRooms[filters.university];
@@ -106,7 +106,10 @@ export const roomsApi = {
       throw error;
     }
 
-    let rooms = response.data.map(enrichRoom);
+    // Support both paginated format (Spring Data Page) and flat array
+    const data = response.data;
+    const roomsArray = (data as any).content ? (data as any).content : (Array.isArray(data) ? data : []);
+    let rooms = roomsArray.map((room: Room) => enrichRoom(room));
 
     if (filters.university && rooms.length === 0) {
       return mockRooms[filters.university];
@@ -114,8 +117,8 @@ export const roomsApi = {
 
     if (filters.university) {
       const buildings = await roomsApi.getBuildings(filters.university);
-      const allowedBuildingIds = new Set(buildings.map((building) => building.id));
-      rooms = rooms.filter((room) => {
+      const allowedBuildingIds = new Set(buildings.map((building: Building) => building.id));
+      rooms = rooms.filter((room: Room) => {
         return room.universityCode === filters.university || allowedBuildingIds.has(getRoomBuildingId(room) || '');
       });
     }
@@ -171,16 +174,19 @@ export const roomsApi = {
 
   getBuildings: async (university?: UniversityCode): Promise<Building[]> => {
     try {
-      const response = await apiClient.get<Building[]>('/buildings', {
+      const response = await apiClient.get<Building[] | { content: Building[] }>('/buildings', {
         params: {
           university: university ? getUniversity(university).apiValue : undefined,
         },
       });
-      const buildings = response.data.map(enrichBuilding);
+      // Support both paginated format (Spring Data Page) and flat array
+      const data = response.data;
+      const buildingsArray = (data as any).content ? (data as any).content : (Array.isArray(data) ? data : []);
+      const buildings = buildingsArray.map((building: Building) => enrichBuilding(building));
       if (!university) {
         return buildings;
       }
-      return buildings.filter((building) => building.universityCode === university);
+      return buildings.filter((building: Building) => building.universityCode === university);
     } catch (error) {
       if (university && shouldUseCatalogFallback(error)) {
         return mockBuildings[university];
