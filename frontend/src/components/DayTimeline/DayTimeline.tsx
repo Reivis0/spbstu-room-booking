@@ -17,7 +17,7 @@ const toMinutes = (time: string) => {
 };
 
 const DAY_START = 480; // 08:00
-const DAY_END = 1320;  // 22:00
+const DAY_END = 1260;  // 21:00
 const DAY_SPAN = DAY_END - DAY_START;
 
 const formatDayLabel = (dateStr: string): string => {
@@ -97,7 +97,7 @@ const DayTimeline: React.FC<DayTimelineProps> = ({ roomId, university }) => {
             <span>12:00</span>
             <span>16:00</span>
             <span>20:00</span>
-            <span>22:00</span>
+            <span>21:00</span>
           </div>
 
           <div className="day-timeline__legend">

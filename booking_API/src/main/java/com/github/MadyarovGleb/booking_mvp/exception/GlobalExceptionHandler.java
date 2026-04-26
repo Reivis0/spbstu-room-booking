@@ -43,6 +43,13 @@ public class GlobalExceptionHandler {
                 .body(errorBody("validation_error", ex.getMessage()));
     }
 
+    @ExceptionHandler(InvalidBookingTimeException.class)
+    public ResponseEntity<?> handleInvalidBookingTimeException(InvalidBookingTimeException ex) {
+        logger.warn("Invalid booking time: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(errorBody("invalid_booking_time", ex.getMessage()));
+    }
+
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<?> handleNotFoundException(NotFoundException ex) {
         logger.warn("Resource not found: {}", ex.getMessage());

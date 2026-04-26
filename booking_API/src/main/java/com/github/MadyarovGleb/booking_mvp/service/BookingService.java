@@ -4,6 +4,7 @@ import com.github.MadyarovGleb.booking_mvp.exception.ConflictException;
 import com.github.MadyarovGleb.booking_mvp.exception.ForbiddenException;
 import com.github.MadyarovGleb.booking_mvp.exception.NotFoundException;
 import com.github.MadyarovGleb.booking_mvp.exception.ValidationException;
+import com.github.MadyarovGleb.booking_mvp.exception.InvalidBookingTimeException;
 import com.github.MadyarovGleb.booking_mvp.dto.CreateBookingRequest;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking;
 import com.github.MadyarovGleb.booking_mvp.repository.BookingRepository;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.time.OffsetDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -34,6 +36,8 @@ import java.util.UUID;
 public class BookingService {
 
     private static final Logger logger = LoggerFactory.getLogger(BookingService.class);
+    private static final LocalTime WORKING_HOURS_START = LocalTime.of(8, 0);
+    private static final LocalTime WORKING_HOURS_END = LocalTime.of(21, 0);
 
     private final BookingRepository bookingRepository;
     private final AvailabilityEngineClient availability;
@@ -168,6 +172,20 @@ public class BookingService {
         if (!req.getEndsAt().isAfter(req.getStartsAt())) {
             logger.warn("Booking validation failed because ends_at is not after starts_at");
             throw new ValidationException("ends_at must be after starts_at");
+        }
+        
+        // Validate working hours (08:00 - 21:00)
+        LocalTime startTime = req.getStartsAt().toLocalTime();
+        LocalTime endTime = req.getEndsAt().toLocalTime();
+        
+        if (startTime.isBefore(WORKING_HOURS_START)) {
+            logger.warn("Booking validation failed: start time {} is before working hours start {}", startTime, WORKING_HOURS_START);
+            throw new InvalidBookingTimeException("Booking start time must be at or after 08:00. Working hours: 08:00 - 21:00");
+        }
+        
+        if (endTime.isAfter(WORKING_HOURS_END)) {
+            logger.warn("Booking validation failed: end time {} is after working hours end {}", endTime, WORKING_HOURS_END);
+            throw new InvalidBookingTimeException("Booking end time must be at or before 21:00. Working hours: 08:00 - 21:00");
         }
     }
 
