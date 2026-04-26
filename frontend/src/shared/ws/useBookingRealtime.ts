@@ -41,6 +41,14 @@ export const useBookingRealtime = (queryClient: QueryClient) => {
     let socket: WebSocket | null = null;
     let reconnectTimer: number | undefined;
     let closedByEffect = false;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_DELAY = 30_000;
+
+    const getReconnectDelay = () => {
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+      reconnectAttempts++;
+      return delay;
+    };
 
     const connect = () => {
       try {
@@ -49,8 +57,18 @@ export const useBookingRealtime = (queryClient: QueryClient) => {
         if (process.env.NODE_ENV === 'development') {
           console.warn('[bookingRealtime] WebSocket init failed:', error);
         }
+        if (!closedByEffect) {
+          reconnectTimer = window.setTimeout(connect, getReconnectDelay());
+        }
         return;
       }
+
+      socket.onopen = () => {
+        reconnectAttempts = 0;
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[bookingRealtime] WebSocket connected');
+        }
+      };
 
       socket.onmessage = (message) => {
         try {
@@ -102,13 +120,23 @@ export const useBookingRealtime = (queryClient: QueryClient) => {
         }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[bookingRealtime] WebSocket closed:', event.code, event.reason);
+        }
         if (!closedByEffect) {
-          reconnectTimer = window.setTimeout(connect, 5_000);
+          const delay = getReconnectDelay();
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[bookingRealtime] Reconnecting in ${delay}ms...`);
+          }
+          reconnectTimer = window.setTimeout(connect, delay);
         }
       };
 
-      socket.onerror = () => {
+      socket.onerror = (error) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[bookingRealtime] WebSocket error:', error);
+        }
         socket?.close();
       };
     };
