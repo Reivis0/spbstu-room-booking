@@ -57,7 +57,7 @@ public class RoomService {
     }
 
     public Page<Room> search(UUID buildingId, Integer capacityMin, Integer capacityMax,
-                             List<String> features, String searchStr, String availableFrom, String availableTo, Pageable pageable) {
+                             List<String> features, String searchStr, String university, String availableFrom, String availableTo, Pageable pageable) {
         if (buildingId != null) {
             MDC.put("building_id", buildingId.toString());
         }

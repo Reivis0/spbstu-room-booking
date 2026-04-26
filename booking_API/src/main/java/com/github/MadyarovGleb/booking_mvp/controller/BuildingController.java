@@ -26,7 +26,10 @@ public class BuildingController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<Building>> list(@PageableDefault(size = 20) Pageable pageable) {
+    public ResponseEntity<Page<Building>> list(
+            @RequestParam(required = false) String university,
+            @PageableDefault(size = 20) Pageable pageable
+    ) {
         logger.info("Building list request started");
         Page<Building> buildings = service.findAll(pageable);
         logger.info("Building list request completed successfully count={}", buildings.getNumberOfElements());

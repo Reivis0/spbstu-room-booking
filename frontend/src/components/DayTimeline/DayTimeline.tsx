@@ -89,7 +89,7 @@ const DayTimeline: React.FC<DayTimelineProps> = ({ roomId, university }) => {
       {data && (
         <>
           <div className="day-timeline__bar-container">
-            {data.slots.map((slot, i) => renderSlot(slot, i))}
+            {data.slots.map((slot: ScheduleSlot, i: number) => renderSlot(slot, i))}
           </div>
           
           <div className="day-timeline__time-labels">
@@ -102,8 +102,8 @@ const DayTimeline: React.FC<DayTimelineProps> = ({ roomId, university }) => {
 
           <div className="day-timeline__legend">
             {data.slots
-              .filter(s => s.status === 'occupied')
-              .map((slot, i) => (
+              .filter((s: ScheduleSlot) => s.status === 'occupied')
+              .map((slot: ScheduleSlot, i: number) => (
                 <div key={i} className="day-timeline__legend-item">
                   <span className={`day-timeline__dot ${slot.type === 'booking' ? 'day-timeline__dot--booking' : 'day-timeline__dot--schedule'}`} />
                   <span className="day-timeline__slot-time">{slot.from}–{slot.to}</span>
@@ -111,7 +111,7 @@ const DayTimeline: React.FC<DayTimelineProps> = ({ roomId, university }) => {
                 </div>
               ))
             }
-            {data.slots.filter(s => s.status === 'occupied').length === 0 && (
+            {data.slots.filter((s: ScheduleSlot) => s.status === 'occupied').length === 0 && (
               <div className="day-timeline__empty">✓ Весь день свободен</div>
             )}
           </div>

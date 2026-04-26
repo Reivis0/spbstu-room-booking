@@ -9,5 +9,6 @@ public class CreateBookingRequest {
     private UUID roomId;
     private OffsetDateTime startsAt;
     private OffsetDateTime endsAt;
+    private String title;
 }
 

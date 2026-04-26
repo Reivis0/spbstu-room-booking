@@ -22,6 +22,9 @@ public class Building {
     @Column(nullable = false)
     private String address;
 
+    @Column(name = "university_code")
+    private String universityCode;
+
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID();

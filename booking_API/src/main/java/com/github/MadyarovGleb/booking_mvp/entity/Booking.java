@@ -29,6 +29,9 @@ public class Booking {
     @Column(name = "ends_at", nullable = false)
     private OffsetDateTime endsAt;
 
+    @Column(name = "title")
+    private String title;
+
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false, columnDefinition = "booking_status")

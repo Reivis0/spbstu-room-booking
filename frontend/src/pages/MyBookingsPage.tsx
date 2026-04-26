@@ -56,11 +56,11 @@ const MyBookingsPage: React.FC = () => {
   });
 
   const roomsMap = useMemo(() => {
-    return new Map((roomsQuery.data || []).map((room) => [room.id, room]));
+    return new Map((roomsQuery.data || []).map((room: Room) => [room.id, room]));
   }, [roomsQuery.data]);
 
   const bookings = useMemo(() => {
-    return (bookingsQuery.data || []).map((booking) => {
+    return (bookingsQuery.data || []).map((booking: Booking) => {
       const room = roomsMap.get(booking.roomId);
       return {
         ...booking,
@@ -74,25 +74,25 @@ const MyBookingsPage: React.FC = () => {
 
   const visibleBookings = activeTab === 'all'
     ? bookings
-    : bookings.filter((booking) => normalizeUniversityCode(booking.universityCode) === activeTab);
+    : bookings.filter((booking: Booking) => normalizeUniversityCode(booking.universityCode) === activeTab);
 
   const upcomingBookings = visibleBookings
-    .filter((booking) => {
+    .filter((booking: Booking) => {
       const startTime = booking.startTime || (booking.startsAt ? new Date(booking.startsAt) : new Date());
       return startTime > new Date() && booking.status !== 'cancelled';
     })
-    .sort((a, b) => {
+    .sort((a: Booking, b: Booking) => {
       const aTime = a.startTime || (a.startsAt ? new Date(a.startsAt) : new Date());
       const bTime = b.startTime || (b.startsAt ? new Date(b.startsAt) : new Date());
       return aTime.getTime() - bTime.getTime();
     });
 
   const pastBookings = visibleBookings
-    .filter((booking) => {
+    .filter((booking: Booking) => {
       const startTime = booking.startTime || (booking.startsAt ? new Date(booking.startsAt) : new Date());
       return startTime <= new Date() || booking.status === 'cancelled';
     })
-    .sort((a, b) => {
+    .sort((a: Booking, b: Booking) => {
       const aTime = a.startTime || (a.startsAt ? new Date(a.startsAt) : new Date());
       const bTime = b.startTime || (b.startsAt ? new Date(b.startsAt) : new Date());
       return bTime.getTime() - aTime.getTime();
@@ -181,7 +181,7 @@ const MyBookingsPage: React.FC = () => {
               <section className="bookings-section">
                 <h2>Предстоящие бронирования</h2>
                 <div className="bookings-grid">
-                  {upcomingBookings.map((booking) => (
+                  {upcomingBookings.map((booking: Booking) => (
                     <BookingCard key={booking.id} booking={booking} onCancel={handleCancel} />
                   ))}
                 </div>
@@ -192,7 +192,7 @@ const MyBookingsPage: React.FC = () => {
               <section className="bookings-section">
                 <h2>Прошедшие бронирования</h2>
                 <div className="bookings-grid">
-                  {pastBookings.map((booking) => (
+                  {pastBookings.map((booking: Booking) => (
                     <BookingCard key={booking.id} booking={booking} onCancel={handleCancel} readOnly />
                   ))}
                 </div>

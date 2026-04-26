@@ -35,6 +35,7 @@ public class RoomController {
             @RequestParam(required = false) Integer capacity_max,
             @RequestParam(required = false) List<String> features,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String university,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_to,
             @PageableDefault(size = 20) Pageable pageable
@@ -46,6 +47,7 @@ public class RoomController {
         Page<Room> rooms = roomService.search(
                 building_id, capacity_min, capacity_max, features,
                 search,
+                university,
                 available_from != null ? available_from.toString() : null,
                 available_to != null ? available_to.toString() : null,
                 pageable
@@ -67,7 +69,8 @@ public class RoomController {
     public ResponseEntity<?> availability(
             @PathVariable UUID id,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date,
-            @RequestParam(defaultValue = "30") int min_duration
+            @RequestParam(defaultValue = "30") int min_duration,
+            @RequestParam(required = false) String university
     ) {
         MDC.put("room_id", id.toString());
         logger.info("Room availability request started date={} min_duration_minutes={}", date, min_duration);
@@ -79,7 +82,8 @@ public class RoomController {
     @GetMapping("/{id}/schedule")
     public ResponseEntity<RoomScheduleResponse> getSchedule(
             @PathVariable UUID id,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date,
+            @RequestParam(required = false) String university
     ) {
         MDC.put("room_id", id.toString());
         logger.info("Room schedule request started roomId={} date={}", id, date);

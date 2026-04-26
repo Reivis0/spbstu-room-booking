@@ -45,13 +45,13 @@ const RoomsPage: React.FC = () => {
 
   const buildings = useMemo(() => {
     const data = buildingsQuery.data || [];
-    return data.filter((building) => getBuildingUniversity(building, universityCode) === universityCode);
+    return data.filter((building: Building) => getBuildingUniversity(building, universityCode) === universityCode);
   }, [buildingsQuery.data, universityCode]);
 
   const rooms = useMemo(() => {
-    const buildingsMap = new Map((buildingsQuery.data || []).map((building) => [building.id, building]));
+    const buildingsMap = new Map((buildingsQuery.data || []).map((building: Building) => [building.id, building]));
 
-    return (roomsQuery.data || []).map((room) => {
+    return (roomsQuery.data || []).map((room: Room) => {
       const building = buildingsMap.get(room.buildingId);
       return {
         ...room,
@@ -62,7 +62,7 @@ const RoomsPage: React.FC = () => {
   }, [buildingsQuery.data, roomsQuery.data, universityCode]);
 
   const filteredRooms = useMemo(() => {
-    return rooms.filter((room) => {
+    return rooms.filter((room: Room) => {
       if (getRoomUniversity(room, universityCode) !== universityCode) return false;
       if (buildingFilter && room.buildingId !== buildingFilter && room.building !== buildingFilter) return false;
       if (floorFilter && room.floor && room.floor.toString() !== floorFilter) return false;
@@ -71,9 +71,9 @@ const RoomsPage: React.FC = () => {
     });
   }, [buildingFilter, capacityFilter, floorFilter, rooms, universityCode]);
 
-  const uniqueBuildingNames = Array.from(new Set(filteredRooms.map((room) => room.building))).filter(Boolean);
+  const uniqueBuildingNames = Array.from(new Set(filteredRooms.map((room: Room) => room.building))).filter(Boolean);
   const floors = Array.from(
-    new Set(rooms.map((room) => room.floor).filter((floor): floor is number => floor !== undefined))
+    new Set(rooms.map((room: Room) => room.floor).filter((floor): floor is number => floor !== undefined))
   ).sort((a, b) => a - b);
 
   const setFilter = (name: string, value: string) => {

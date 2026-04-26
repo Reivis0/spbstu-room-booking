@@ -1,5 +1,6 @@
 package com.github.MadyarovGleb.booking_mvp.controller;
 
+import com.github.MadyarovGleb.booking_mvp.dto.ChainBookingRequest;
 import com.github.MadyarovGleb.booking_mvp.dto.CreateBookingRequest;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking;
 import com.github.MadyarovGleb.booking_mvp.exception.ForbiddenException;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -54,6 +56,32 @@ public class BookingController {
         MDC.put("booking_id", booking.getId().toString());
         logger.info("Booking creation completed successfully");
         return ResponseEntity.status(201).body(booking);
+    }
+
+    @PostMapping("/chain")
+    public ResponseEntity<?> createChain(@RequestBody ChainBookingRequest body) {
+        var userId = getCurrentUserId();
+        if (userId == null) {
+            logger.warn("Chain booking creation rejected because user is not authenticated");
+            return ResponseEntity.status(401).build();
+        }
+        MDC.put("user_id", userId.toString());
+        logger.info("Chain booking creation started items_count={}", body.getItems() != null ? body.getItems().size() : 0);
+        
+        List<Booking> bookings = new ArrayList<>();
+        for (ChainBookingRequest.ChainBookingItem item : body.getItems()) {
+            CreateBookingRequest req = CreateBookingRequest.builder()
+                    .roomId(item.getRoomId())
+                    .startsAt(item.getStartsAt())
+                    .endsAt(item.getEndsAt())
+                    .title(body.getTitle() != null ? body.getTitle() : body.getPurpose())
+                    .build();
+            Booking booking = bookingService.createBooking(userId, req);
+            bookings.add(booking);
+        }
+        
+        logger.info("Chain booking creation completed successfully count={}", bookings.size());
+        return ResponseEntity.status(201).body(bookings);
     }
 
     @GetMapping("/my")

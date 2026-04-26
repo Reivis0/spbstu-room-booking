@@ -72,6 +72,7 @@ public class BookingService {
                 .roomId(req.getRoomId())
                 .startsAt(req.getStartsAt())
                 .endsAt(req.getEndsAt())
+                .title(req.getTitle())
                 .status(Booking.BookingStatus.pending)
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
@@ -120,6 +121,7 @@ public class BookingService {
         booking.setRoomId(req.getRoomId());
         booking.setStartsAt(req.getStartsAt());
         booking.setEndsAt(req.getEndsAt());
+        booking.setTitle(req.getTitle());
         booking.setUpdatedAt(OffsetDateTime.now());
         Booking updated = bookingRepository.save(booking);
         outboxService.addEvent(OutboxEventType.BOOKING_UPDATED, eventPayload(updated));
@@ -193,6 +195,13 @@ public class BookingService {
         MDC.put("user_id", userId.toString());
         List<Booking> bookings = bookingRepository.findByUserId(userId);
         logger.info("Fetched bookings by user count={}", bookings.size());
+        return bookings;
+    }
+
+    public List<Booking> listAll() {
+        logger.info("Fetching all bookings");
+        List<Booking> bookings = bookingRepository.findAll();
+        logger.info("Fetched all bookings count={}", bookings.size());
         return bookings;
     }
 

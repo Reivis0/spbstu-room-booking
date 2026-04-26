@@ -29,6 +29,12 @@ public class Room {
     @Column(columnDefinition = "jsonb")
     private String features;
 
+    @Column(name = "floor")
+    private Integer floor;
+
+    @Column(name = "university_code")
+    private String universityCode;
+
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID();
