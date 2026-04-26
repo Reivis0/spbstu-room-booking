@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 
@@ -17,11 +17,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const token = localStorage.getItem('accessToken');
 
   if (!isAuthenticated && !token) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/register" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;
 };
 
 export default ProtectedRoute;
-

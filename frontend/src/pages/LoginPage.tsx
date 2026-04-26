@@ -38,41 +38,21 @@ const LoginPage: React.FC = () => {
   return (
     <div className="login">
       <div className="login__image" aria-hidden="true">
-        <img src="/assets/main.jpg" alt="Главный корпус Политеха" />
+        <img src="/assets/main.jpg" alt="Учебное пространство университета" />
       </div>
       <div className="login__content">
         <div className="login__brand">
           <div className="brand__logo" aria-hidden="true">
-            <img 
-              src="/assets/spbstu-logo.png" 
-              alt="СПбПУ" 
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                display: 'block'
-              }}
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-                const parent = target.parentElement;
-                if (parent && !parent.textContent) {
-                  parent.textContent = 'СПбПУ';
-                  parent.style.display = 'flex';
-                  parent.style.alignItems = 'center';
-                  parent.style.justifyContent = 'center';
-                }
-              }}
-            />
+            PB
           </div>
           <div>
-            <span className="brand__name">Главный корпус</span>
-            <span className="brand__tagline">Система бронирования аудиторий</span>
+            <span className="brand__name">POLYBOOK</span>
+            <span className="brand__tagline">Учебные пространства Петербурга</span>
           </div>
         </div>
         <form className="login-card" onSubmit={handleSubmit}>
           <h1>Вход в систему</h1>
-          <p>Используйте корпоративную учетную запись университета.</p>
+          <p>Используйте корпоративную учетную запись университета для доступа к бронированию.</p>
           
           {error && <div className="error" style={{ marginBottom: '1rem' }}>{error}</div>}
 
@@ -115,7 +95,7 @@ const LoginPage: React.FC = () => {
             {isLoading ? 'Вход...' : 'Войти'}
           </button>
           <div className="login-card__links">
-            <a href="#">Забыли пароль?</a>
+            <Link to="/register">Регистрация</Link>
             <Link to="/">Перейти к бронированию</Link>
           </div>
         </form>

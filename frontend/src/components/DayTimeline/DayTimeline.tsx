@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useRoomSchedule } from '../../hooks/useRoomSchedule';
 import { ScheduleSlot } from '../../types';
+import { UniversityCode } from '../../shared/university/universities';
 import { format, addDays, startOfDay, differenceInDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import './DayTimeline.css';
 
 interface DayTimelineProps {
   roomId: string;
+  university?: UniversityCode;
 }
 
 const toMinutes = (time: string) => {
@@ -29,9 +31,9 @@ const formatDayLabel = (dateStr: string): string => {
   return format(d, 'eee, d MMM', { locale: ru });
 };
 
-const DayTimeline: React.FC<DayTimelineProps> = ({ roomId }) => {
+const DayTimeline: React.FC<DayTimelineProps> = ({ roomId, university }) => {
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const { data, loading, error } = useRoomSchedule(roomId, date);
+  const { data, loading, error } = useRoomSchedule(roomId, date, university);
 
   const nextDays = Array.from({ length: 7 }, (_, i) => {
     return format(addDays(new Date(), i), 'yyyy-MM-dd');
@@ -60,7 +62,7 @@ const DayTimeline: React.FC<DayTimelineProps> = ({ roomId }) => {
         key={index}
         className={className}
         style={{ left: `${left}%`, width: `${width}%` }}
-        title={`${slot?.label || (slot?.status === 'free' ? 'Свободно' : 'Занято')} (${slot?.from || ''}–${slot?.to || ''})`}
+        title={`${slot.label || (slot.status === 'free' ? 'Свободно' : 'Занято')} (${slot.from}–${slot.to})`}
       />
     );
   };
@@ -87,7 +89,7 @@ const DayTimeline: React.FC<DayTimelineProps> = ({ roomId }) => {
       {data && (
         <>
           <div className="day-timeline__bar-container">
-            {(data.slots || []).map((slot, i) => renderSlot(slot, i))}
+            {data.slots.map((slot, i) => renderSlot(slot, i))}
           </div>
           
           <div className="day-timeline__time-labels">
@@ -99,17 +101,17 @@ const DayTimeline: React.FC<DayTimelineProps> = ({ roomId }) => {
           </div>
 
           <div className="day-timeline__legend">
-            {(data.slots || [])
-              .filter(s => s && s.status === 'occupied')
+            {data.slots
+              .filter(s => s.status === 'occupied')
               .map((slot, i) => (
                 <div key={i} className="day-timeline__legend-item">
                   <span className={`day-timeline__dot ${slot.type === 'booking' ? 'day-timeline__dot--booking' : 'day-timeline__dot--schedule'}`} />
                   <span className="day-timeline__slot-time">{slot.from}–{slot.to}</span>
-                  <span className="day-timeline__slot-label">{slot.label || 'Без названия'}</span>
+                  <span className="day-timeline__slot-label">{slot.label}</span>
                 </div>
               ))
             }
-            {(data.slots || []).filter(s => s && s.status === 'occupied').length === 0 && (
+            {data.slots.filter(s => s.status === 'occupied').length === 0 && (
               <div className="day-timeline__empty">✓ Весь день свободен</div>
             )}
           </div>

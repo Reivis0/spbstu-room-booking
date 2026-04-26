@@ -3,9 +3,16 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Room } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import DayTimeline from '../DayTimeline/DayTimeline';
+import AvailabilityIndicator from '../../features/room/ui/AvailabilityIndicator';
+import {
+  UniversityCode,
+  getUniversity,
+  normalizeUniversityCode,
+} from '../../shared/university/universities';
 
 interface RoomCardProps {
   room: Room;
+  university?: UniversityCode;
 }
 
 const equipmentLabels: Record<string, string> = {
@@ -21,10 +28,13 @@ const equipmentLabels: Record<string, string> = {
   WiFi: 'Wi-Fi',
 };
 
-const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
+const RoomCard: React.FC<RoomCardProps> = ({ room, university }) => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthStore();
   const [showSchedule, setShowSchedule] = useState(false);
+  const roomUniversity = getUniversity(
+    university || normalizeUniversityCode(room.universityCode || room.university)
+  );
 
   let equipment = room.equipment || [];
   if (equipment.length === 0 && room.features) {
@@ -64,12 +74,21 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
           </p>
         </div>
         <Link 
-          to={`/booking/${room.id}`} 
+          to={`/booking/${room.id}?university=${roomUniversity.code}`} 
           className="btn btn--primary"
           onClick={handleBookingClick}
         >
           Забронировать
         </Link>
+      </div>
+
+      <div className="room-card__status-row">
+        <span className="room-card__university-badge">{roomUniversity.badgeLabel}</span>
+        <AvailabilityIndicator
+          status={room.availabilityStatus || 'free'}
+          nextSlotAt={room.nextSlotAt}
+          updatedAt={room.statusUpdatedAt}
+        />
       </div>
       
       {equipment.length > 0 && (
@@ -128,11 +147,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
           {showSchedule ? 'Скрыть расписание' : 'Показать расписание'}
         </button>
 
-        {showSchedule && (
-          <div className="custom-scrollbar" style={{ maxHeight: '280px', overflowY: 'auto', marginTop: '12px', paddingRight: '4px' }}>
-            <DayTimeline roomId={room.id} />
-          </div>
-        )}
+        {showSchedule && <DayTimeline roomId={room.id} university={roomUniversity.code} />}
       </div>
     </article>
   );
