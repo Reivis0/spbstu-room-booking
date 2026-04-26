@@ -26,17 +26,26 @@ public class BuildingController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<Building>> list(
+    public ResponseEntity<?> list(
             @RequestParam(required = false) String university,
+            @RequestParam(defaultValue = "false") boolean unpaged,
             @PageableDefault(size = 20) Pageable pageable
     ) {
         if (university != null) {
             MDC.put("university", university);
         }
-        logger.info("Building list request started");
-        Page<Building> buildings = service.findAll(university, pageable);
-        logger.info("Building list request completed successfully count={}", buildings.getNumberOfElements());
-        return ResponseEntity.ok(buildings);
+        logger.info("Building list request started unpaged={}", unpaged);
+        
+        if (unpaged) {
+            Pageable unpagedPageable = Pageable.unpaged();
+            Page<Building> buildings = service.findAll(university, unpagedPageable);
+            logger.info("Building list request completed successfully count={}", buildings.getNumberOfElements());
+            return ResponseEntity.ok(buildings.getContent());
+        } else {
+            Page<Building> buildings = service.findAll(university, pageable);
+            logger.info("Building list request completed successfully count={}", buildings.getNumberOfElements());
+            return ResponseEntity.ok(buildings);
+        }
     }
 
     @GetMapping("/{id}")

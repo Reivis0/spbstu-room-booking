@@ -64,7 +64,7 @@ const RoomsPage: React.FC = () => {
   const filteredRooms = useMemo(() => {
     return rooms.filter((room: Room) => {
       // Backend already filters by university, only apply client-side filters
-      if (buildingFilter && room.buildingId !== buildingFilter && room.building !== buildingFilter) return false;
+      if (buildingFilter && room.buildingId !== buildingFilter) return false;
       if (floorFilter && room.floor && room.floor.toString() !== floorFilter) return false;
       if (capacityFilter && room.capacity < parseInt(capacityFilter, 10)) return false;
       return true;
@@ -155,11 +155,6 @@ const RoomsPage: React.FC = () => {
                   {building.name}
                 </option>
               ))}
-              {uniqueBuildingNames.map((buildingName) => (
-                <option key={buildingName} value={buildingName}>
-                  {buildingName}
-                </option>
-              ))}
             </select>
           </div>
 
@@ -173,8 +168,8 @@ const RoomsPage: React.FC = () => {
             >
               <option value="">Все этажи</option>
               {floors.map((floor) => (
-                <option key={floor} value={floor.toString()}>
-                  {floor}
+                <option key={floor?.toString() ?? 'unknown'} value={floor?.toString() ?? ''}>
+                  {floor ?? 'Неизвестно'}
                 </option>
               ))}
             </select>
@@ -213,7 +208,7 @@ const RoomsPage: React.FC = () => {
               <EmptyState message="По выбранным параметрам аудиторий не найдено. Попробуйте изменить фильтры." />
             ) : (
               filteredRooms.map((room) => (
-                <RoomCard key={room.id} room={room} university={universityCode} />
+                <RoomCard key={room.id?.toString() ?? crypto.randomUUID()} room={room} university={universityCode} />
               ))
             )}
           </div>

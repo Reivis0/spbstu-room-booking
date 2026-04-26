@@ -78,6 +78,15 @@ public class RoomService {
             );
             Page<Room> roomPage = roomRepository.findAll(spec, pageable);
 
+            // Apply natural sorting by floor and room name
+            List<Room> sortedRooms = roomPage.getContent().stream()
+                    .sorted(Comparator
+                            .comparing(Room::getFloor, Comparator.nullsLast(Comparator.naturalOrder()))
+                            .thenComparing(Room::getName, new com.github.MadyarovGleb.booking_mvp.util.NaturalOrderComparator()))
+                    .collect(Collectors.toList());
+            
+            roomPage = new PageImpl<>(sortedRooms, pageable, roomPage.getTotalElements());
+
             if (availableFrom != null && availableTo != null) {
                 String date = availableFrom.substring(0, 10);
                 String startTime = availableFrom.substring(11, 16);

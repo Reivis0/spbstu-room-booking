@@ -94,6 +94,7 @@ export const roomsApi = {
       university: filters.university ? getUniversity(filters.university).apiValue : undefined,
       building_id: filters.building || undefined,
       capacity_min: filters.capacity || undefined,
+      unpaged: true,
     };
 
     let response;
@@ -177,6 +178,7 @@ export const roomsApi = {
       const response = await apiClient.get<Building[] | { content: Building[] }>('/buildings', {
         params: {
           university: university ? getUniversity(university).apiValue : undefined,
+          unpaged: true,
         },
       });
       // Support both paginated format (Spring Data Page) and flat array

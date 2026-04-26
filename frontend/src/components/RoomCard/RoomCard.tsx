@@ -68,9 +68,9 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, university }) => {
           <p className="room-card__meta">
             {room.building && <span style={{ fontWeight: '600' }}>{room.building}</span>}
             {room.building && (room.floor || room.capacity) && ' • '}
-            {room.capacity && <span>{room.capacity} мест</span>}
+            {room.floor && <span>Этаж: {room.floor}</span>}
             {room.floor && room.capacity && ' • '}
-            {room.floor && <span>{room.floor} этаж</span>}
+            {room.capacity && <span>👥 {room.capacity} мест</span>}
           </p>
         </div>
         <Link 

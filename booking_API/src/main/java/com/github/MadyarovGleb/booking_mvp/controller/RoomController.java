@@ -29,7 +29,7 @@ public class RoomController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<Room>> search(
+    public ResponseEntity<?> search(
             @RequestParam(required = false) UUID building_id,
             @RequestParam(required = false) Integer capacity_min,
             @RequestParam(required = false) Integer capacity_max,
@@ -38,22 +38,38 @@ public class RoomController {
             @RequestParam(required = false) String university,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_to,
+            @RequestParam(defaultValue = "false") boolean unpaged,
             @PageableDefault(size = 20) Pageable pageable
     ) {
         if (building_id != null) {
             MDC.put("building_id", building_id.toString());
         }
-        logger.info("Room search started");
-        Page<Room> rooms = roomService.search(
-                building_id, capacity_min, capacity_max, features,
-                search,
-                university,
-                available_from != null ? available_from.toString() : null,
-                available_to != null ? available_to.toString() : null,
-                pageable
-        );
-        logger.info("Room search completed successfully count={}", rooms.getNumberOfElements());
-        return ResponseEntity.ok(rooms);
+        logger.info("Room search started unpaged={}", unpaged);
+        
+        if (unpaged) {
+            Pageable unpagedPageable = Pageable.unpaged();
+            Page<Room> rooms = roomService.search(
+                    building_id, capacity_min, capacity_max, features,
+                    search,
+                    university,
+                    available_from != null ? available_from.toString() : null,
+                    available_to != null ? available_to.toString() : null,
+                    unpagedPageable
+            );
+            logger.info("Room search completed successfully count={}", rooms.getNumberOfElements());
+            return ResponseEntity.ok(rooms.getContent());
+        } else {
+            Page<Room> rooms = roomService.search(
+                    building_id, capacity_min, capacity_max, features,
+                    search,
+                    university,
+                    available_from != null ? available_from.toString() : null,
+                    available_to != null ? available_to.toString() : null,
+                    pageable
+            );
+            logger.info("Room search completed successfully count={}", rooms.getNumberOfElements());
+            return ResponseEntity.ok(rooms);
+        }
     }
 
     @GetMapping("/{id}")

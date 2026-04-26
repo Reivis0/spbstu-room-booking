@@ -426,7 +426,7 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
     )", {university_id}, std::make_unique<SyncGenericCb>());
 
     m_pg_client->execute(R"(
-        INSERT INTO rooms (id, university_id, building_id, ruz_id, name, code, capacity, university_code)
+        INSERT INTO rooms (id, university_id, building_id, ruz_id, name, code, capacity, floor, university_code)
         SELECT
             uuid_generate_v4(),
             si.university_id,
@@ -434,7 +434,22 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
             si.ruz_room_id,
             COALESCE(NULLIF(si.room_name, ''), 'Room ' || si.ruz_room_id),
             'ROOM_' || si.university_id || '_' || si.ruz_room_id,
-            30,
+            -- Heuristic capacity estimation
+            CASE
+                WHEN LOWER(si.room_name) ~ '(актовый|зал)' THEN 100
+                WHEN LOWER(si.room_name) ~ '(комп|лаб)' THEN 20
+                WHEN si.room_name ~ '^\d{1,2}[А-Яа-яA-Za-z]*$' THEN 15
+                WHEN si.room_name ~ '^\d{4,}' THEN 100
+                ELSE 30
+            END,
+            -- Heuristic floor extraction
+            CASE
+                WHEN si.room_name ~ '^\d{3}$' THEN SUBSTRING(si.room_name FROM 1 FOR 1)::INTEGER
+                WHEN si.room_name ~ '^[А-Яа-яA-Za-z\-]+\d{3}$' THEN SUBSTRING(si.room_name FROM '\d{3}$')::TEXT::INTEGER / 100
+                WHEN si.room_name ~ '^\d{3}[А-Яа-яA-Za-z]+$' THEN SUBSTRING(si.room_name FROM '^\d{3}')::TEXT::INTEGER / 100
+                WHEN si.room_name ~ '^\d{4,}$' THEN SUBSTRING(si.room_name FROM 1 FOR 2)::INTEGER
+                ELSE NULL
+            END,
             si.university_id
         FROM (
             SELECT DISTINCT
@@ -454,6 +469,8 @@ void RuzImporter::syncRoomsAndBuildings(const std::string& university_id) {
         DO UPDATE SET
             name = EXCLUDED.name,
             building_id = EXCLUDED.building_id,
+            capacity = EXCLUDED.capacity,
+            floor = EXCLUDED.floor,
             university_code = EXCLUDED.university_code,
             updated_at = now()
     )", {university_id}, std::make_unique<SyncGenericCb>());
