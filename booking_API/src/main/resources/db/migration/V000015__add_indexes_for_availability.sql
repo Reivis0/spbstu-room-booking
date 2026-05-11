@@ -1,0 +1,2 @@
+CREATE INDEX IF NOT EXISTS idx_schedules_import_room_starts_ends ON schedules_import (room_id, starts_at, ends_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_room_starts_ends ON bookings (room_id, starts_at, ends_at);

@@ -1,0 +1,8 @@
+.git/
+.gemini/
+node_modules/
+dist/
+build/
+target/
+*.log
+.DS_Store

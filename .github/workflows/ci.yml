@@ -110,6 +110,10 @@ jobs:
             libevent-dev \
             libcurl4-openssl-dev \
             libssl-dev \
+            protobuf-compiler \
+            libprotobuf-dev \
+            libgrpc++-dev \
+            protobuf-compiler-grpc \
             pkg-config
       
       - name: Build C++ tests

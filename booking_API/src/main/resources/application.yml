@@ -23,7 +23,7 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
-    locations: classpath:db/migrations
+    locations: classpath:db/migration
     baseline-on-migrate: true
     validate-on-migrate: true
     out-of-order: false
