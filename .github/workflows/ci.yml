@@ -114,6 +114,7 @@ jobs:
             libprotobuf-dev \
             libgrpc++-dev \
             protobuf-compiler-grpc \
+            libhiredis-dev \
             pkg-config
       
       - name: Build C++ tests

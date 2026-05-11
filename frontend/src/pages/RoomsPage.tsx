@@ -9,18 +9,6 @@ import UniversitySelect from '../features/university/ui/UniversitySelect';
 import { useUniversitySearchParam } from '../shared/university/useUniversitySearchParam';
 import { normalizeUniversityCode } from '../shared/university/universities';
 
-const getRoomUniversity = (room: Room, fallbackUniversity: string) => {
-  return room.universityCode || room.university
-    ? normalizeUniversityCode(room.universityCode || room.university)
-    : normalizeUniversityCode(fallbackUniversity);
-};
-
-const getBuildingUniversity = (building: Building, fallbackUniversity: string) => {
-  return building.universityCode || building.university
-    ? normalizeUniversityCode(building.universityCode || building.university)
-    : normalizeUniversityCode(fallbackUniversity);
-};
-
 const RoomsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { universityCode, setUniversityCode } = useUniversitySearchParam();
@@ -71,7 +59,6 @@ const RoomsPage: React.FC = () => {
     });
   }, [buildingFilter, capacityFilter, floorFilter, rooms]);
 
-  const uniqueBuildingNames = Array.from(new Set(filteredRooms.map((room: Room) => room.building))).filter(Boolean);
   const floors = Array.from(
     new Set(rooms.map((room: Room) => room.floor).filter((floor): floor is number => floor !== undefined))
   ).sort((a, b) => a - b);
