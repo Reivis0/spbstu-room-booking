@@ -24,6 +24,10 @@ struct HttpClient::Impl
       curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
       curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 60L);
       curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 10L);
+      // FIX BUG #1: Set buffer size to handle 32KB+ responses (default was too small)
+      // CURLOPT_BUFFERSIZE controls internal read buffer for each request
+      // Setting to 131072 (128KB) ensures no truncation of 32KB responses
+      curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 131072L);
       curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, HttpClient::write_callback);
     }
   }
@@ -41,7 +45,27 @@ size_t HttpClient::write_callback(char* ptr, size_t size, size_t nmemb, void* us
 {
   size_t total_size = size * nmemb;
   std::string* response = static_cast<std::string*>(userdata);
+  
+  // Validate input
+  if (!ptr || !response) {
+    LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT:WRITE_CB: Invalid parameters (ptr=" + 
+              std::string(ptr ? "valid" : "null") + ", userdata=" + 
+              std::string(userdata ? "valid" : "null") + ")");
+    return 0;
+  }
+  
+  // Append data and track size
+  size_t pre_append_size = response->size();
   response->append(ptr, total_size);
+  size_t post_append_size = response->size();
+  
+  // Log chunked data reception for large responses
+  if (total_size > 1024) {  // Only log significant chunks (>1KB)
+    LOG_DEBUG("RUZ_IMPORTER:HTTP_CLIENT:WRITE_CB: Received chunk of " + 
+              std::to_string(total_size) + " bytes, total so far: " + 
+              std::to_string(post_append_size) + " bytes");
+  }
+  
   return total_size;
 }
 
@@ -103,6 +127,17 @@ std::string HttpClient::fetch_ruz_data(const std::string& api_url)
         curl_easy_getinfo(p_impl->curl, CURLINFO_RESPONSE_CODE, &http_code);
         
         if (http_code == 200) {
+            // FIX BUG #1: Add response size logging to verify truncation is fixed
+            LOG_INFO("RUZ_IMPORTER:HTTP_CLIENT: HTTP response received: " + 
+                     std::to_string(p_impl->response_data.size()) + " bytes, total response: " +
+                     std::to_string(p_impl->response_data.size()) + " bytes");
+            
+            // Validate response is not empty
+            if (p_impl->response_data.empty()) {
+                LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT: Empty response received for URL: " + api_url);
+                continue;
+            }
+            
             return p_impl->response_data;
         } else if (http_code == 429) {
             LOG_WARN("RUZ_IMPORTER:HTTP_CLIENT: Rate limited (429) despite throttling. Attempt " + std::to_string(attempt));
