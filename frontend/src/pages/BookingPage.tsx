@@ -5,6 +5,7 @@ import { Room, BookingFormData, Building } from '../types';
 import { roomsApi } from '../api/rooms';
 import { bookingsApi } from '../api/bookings';
 import { useAuthStore } from '../store/useAuthStore';
+import toast from 'react-hot-toast';
 import UniversitySelect from '../features/university/ui/UniversitySelect';
 import ChainBookingPanel from '../features/booking/ui/ChainBookingPanel';
 import { useUniversitySearchParam } from '../shared/university/useUniversitySearchParam';
@@ -135,17 +136,24 @@ const BookingPage: React.FC = () => {
       setSubmitting(true);
       const bookingData = {
         roomId: formData.roomId,
-        startsAt: start.toISOString(),
-        endsAt: end.toISOString(),
+        startsAt: format(start, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+        endsAt: format(end, "yyyy-MM-dd'T'HH:mm:ssXXX"),
       };
       await bookingsApi.create(bookingData);
+      
+      const roomName = room?.name || `Аудитория #${formData.roomId.slice(0, 8)}`;
+      toast.success(`${roomName} успешно забронирована`, { duration: 5000 });
+      
       navigate('/my-bookings');
     } catch (err: any) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         navigate('/login');
         return;
       }
-      setError(err.response?.data?.message || 'Не удалось создать бронирование.');
+      
+      const errorMessage = err.response?.data?.message || 'Не удалось создать бронирование. Попробуйте позже.';
+      setError(errorMessage);
+      toast.error(errorMessage);
       console.error(err);
     } finally {
       setSubmitting(false);
@@ -154,7 +162,9 @@ const BookingPage: React.FC = () => {
 
   const getMinDateTime = () => {
     const now = new Date();
-    now.setMinutes(0, 0, 0);
+    // Round to the next 5 minutes for better UX
+    const minutes = now.getMinutes();
+    now.setMinutes(Math.ceil(minutes / 5) * 5, 0, 0);
     return format(now, "yyyy-MM-dd'T'HH:mm");
   };
 

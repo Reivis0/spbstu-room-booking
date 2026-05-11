@@ -17,6 +17,9 @@ public class Booking {
     @GeneratedValue
     private UUID id;
 
+    @Column(name = "chain_id")
+    private UUID chainId;
+
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
@@ -31,6 +34,9 @@ public class Booking {
 
     @Column(name = "title")
     private String title;
+
+    @Column(name = "cancellation_reason")
+    private String cancellationReason;
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)

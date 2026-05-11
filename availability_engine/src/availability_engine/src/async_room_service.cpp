@@ -119,12 +119,12 @@ grpc::Status AsyncRoomService::ComputeIntervals(grpc::ServerContext* context,
             "FROM bookings "
             "WHERE room_id = $1 "
             "  AND status = 'confirmed' "
-            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz) "
+            "  AND starts_at < $3::timestamptz AND ends_at > $2::timestamptz "
             "UNION ALL "
             "SELECT id::text, starts_at::text, ends_at::text, '00000000-0000-0000-0000-000000000000'::text, subject, 'confirmed'::text "
             "FROM schedules_import "
             "WHERE room_id = $1 "
-            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz)";
+            "  AND starts_at < $3::timestamptz AND ends_at > $2::timestamptz";
         
         pqxx::result res = txn.exec_params(query, request->room_id(), start_full, end_full);
         
@@ -182,6 +182,16 @@ grpc::Status AsyncRoomService::Validate(grpc::ServerContext* context,
     LOG_INFO("gRPC: Validate called for room=" + request->room_id() + 
              " date=" + request->date() + " interval=" + request->start_time() + "-" + request->end_time());
 
+    if (request->start_time() >= request->end_time()) {
+        LOG_WARN("gRPC: Validate failed: start_time >= end_time (" + request->start_time() + " - " + request->end_time() + ")");
+        response->set_is_valid(false);
+        auto* details = response->mutable_details();
+        details->set_duration_valid(false);
+        details->set_working_hours_valid(true);
+        details->set_no_conflicts(true);
+        return grpc::Status::OK;
+    }
+
     std::string start_full = request->date() + " " + request->start_time() + "+00";
     std::string end_full = request->date() + " " + request->end_time() + "+00";
 
@@ -196,12 +206,12 @@ grpc::Status AsyncRoomService::Validate(grpc::ServerContext* context,
             "FROM bookings "
             "WHERE room_id = $1 "
             "  AND status = 'confirmed' "
-            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz) "
+            "  AND starts_at < $3::timestamptz AND ends_at > $2::timestamptz "
             "UNION ALL "
             "SELECT id::text, starts_at::text, ends_at::text, '00000000-0000-0000-0000-000000000000'::text, subject, 'confirmed'::text "
             "FROM schedules_import "
             "WHERE room_id = $1 "
-            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz)";
+            "  AND starts_at < $3::timestamptz AND ends_at > $2::timestamptz";
         
         pqxx::result res = txn.exec_params(query, request->room_id(), start_full, end_full);
         
@@ -266,12 +276,12 @@ grpc::Status AsyncRoomService::OccupiedIntervals(grpc::ServerContext* context,
             "FROM bookings "
             "WHERE room_id = $1 "
             "  AND status = 'confirmed' "
-            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz) "
+            "  AND starts_at < $3::timestamptz AND ends_at > $2::timestamptz "
             "UNION ALL "
             "SELECT id::text, starts_at::text, ends_at::text, '00000000-0000-0000-0000-000000000000'::text, subject, 'confirmed'::text "
             "FROM schedules_import "
             "WHERE room_id = $1 "
-            "  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz)";
+            "  AND starts_at < $3::timestamptz AND ends_at > $2::timestamptz";
         
         pqxx::result res = txn.exec_params(query, request->room_id(), start_full, end_full);
         

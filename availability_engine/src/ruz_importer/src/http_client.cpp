@@ -46,24 +46,16 @@ size_t HttpClient::write_callback(char* ptr, size_t size, size_t nmemb, void* us
   size_t total_size = size * nmemb;
   std::string* response = static_cast<std::string*>(userdata);
   
-  // Validate input
   if (!ptr || !response) {
-    LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT:WRITE_CB: Invalid parameters (ptr=" + 
-              std::string(ptr ? "valid" : "null") + ", userdata=" + 
-              std::string(userdata ? "valid" : "null") + ")");
+    LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT:WRITE_CB: Invalid parameters");
     return 0;
   }
   
-  // Append data and track size
-  size_t pre_append_size = response->size();
-  response->append(ptr, total_size);
-  size_t post_append_size = response->size();
-  
-  // Log chunked data reception for large responses
-  if (total_size > 1024) {  // Only log significant chunks (>1KB)
-    LOG_DEBUG("RUZ_IMPORTER:HTTP_CLIENT:WRITE_CB: Received chunk of " + 
-              std::to_string(total_size) + " bytes, total so far: " + 
-              std::to_string(post_append_size) + " bytes");
+  try {
+    response->append(ptr, total_size);
+  } catch (const std::bad_alloc& e) {
+    LOG_ERROR("RUZ_IMPORTER:HTTP_CLIENT:WRITE_CB: Memory allocation failed");
+    return 0;
   }
   
   return total_size;
@@ -100,6 +92,7 @@ std::string HttpClient::fetch_ruz_data(const std::string& api_url)
     return "";
   }
 
+  p_impl->response_data.reserve(65536); // Reserve 64KB
   LOG_INFO("RUZ_IMPORTER:HTTP_CLIENT: Starting fetch for URL: " + api_url);
 
   // PROACTIVE THROTTLING: Sleep BEFORE making request to avoid 429

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { Booking, Room } from '../types';
 import { bookingsApi } from '../api/bookings';
 import { roomsApi } from '../api/rooms';
@@ -21,12 +22,27 @@ const getBookingUniversity = (booking: Booking, roomsMap: Map<string, Room>) => 
   );
 };
 
+const translateReason = (reason?: string): string => {
+  if (!reason) return 'Причина не указана';
+  
+  const mapping: Record<string, string> = {
+    'external_step_failed': 'Техническая ошибка при проверке доступности',
+    'availability_conflict': 'Аудитория уже занята на это время',
+    'user_booking_limit_exceeded': 'Превышен лимит ваших активных бронирований',
+    'booking_not_found': 'Запись не найдена',
+  };
+
+  return mapping[reason] || reason;
+};
+
 const MyBookingsPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const { universityCode, setUniversityCode } = useUniversitySearchParam();
   const activeTab = (new URLSearchParams(window.location.search).get('university') || 'all') as BookingTab;
+
+  const prevBookingsRef = React.useRef<Record<string, string>>({});
 
   React.useEffect(() => {
     if (authLoading) return;
@@ -46,13 +62,18 @@ const MyBookingsPage: React.FC = () => {
     queryKey: ['bookings', 'my'],
     queryFn: () => bookingsApi.getMyBookings(),
     enabled: !authLoading,
+    refetchInterval: 5000, // Поллинг каждые 5 секунд для реактивности
   });
 
   const cancelMutation = useMutation({
     mutationFn: bookingsApi.cancel,
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      toast.success('Бронирование успешно отменено');
     },
+    onError: () => {
+      toast.error('Не удалось отменить бронирование');
+    }
   });
 
   const roomsMap = useMemo(() => {
@@ -66,11 +87,37 @@ const MyBookingsPage: React.FC = () => {
         ...booking,
         startTime: booking.startsAt ? new Date(booking.startsAt) : undefined,
         endTime: booking.endsAt ? new Date(booking.endsAt) : undefined,
-        roomName: booking.roomName || room?.name || `Аудитория ${room?.code || booking.roomId}`,
+        roomName: booking.roomName || room?.name || `Аудитория #${booking.roomId.slice(0, 8)}`,
         universityCode: getBookingUniversity(booking, roomsMap),
       };
     });
   }, [bookingsQuery.data, roomsMap]);
+
+  // Отслеживание изменений статуса для уведомлений
+  React.useEffect(() => {
+    if (bookings.length > 0) {
+      const currentBookings: Record<string, string> = {};
+      const prevBookings = prevBookingsRef.current;
+      
+      bookings.forEach((b) => {
+        currentBookings[b.id] = b.status;
+        
+        // Если статус изменился по сравнению с предыдущим запросом
+        if (prevBookings[b.id] && prevBookings[b.id] !== b.status) {
+          const roomName = b.roomName;
+          if (b.status === 'confirmed') {
+            toast.success(`Бронирование ${roomName} подтверждено!`, { duration: 5000 });
+          } else if (b.status === 'rejected') {
+            toast.error(
+              `Отказ: ${roomName}. ${translateReason(b.cancellationReason)}`,
+              { duration: 8000 }
+            );
+          }
+        }
+      });
+      prevBookingsRef.current = currentBookings;
+    }
+  }, [bookings]);
 
   const visibleBookings = activeTab === 'all'
     ? bookings
@@ -79,7 +126,7 @@ const MyBookingsPage: React.FC = () => {
   const upcomingBookings = visibleBookings
     .filter((booking: Booking) => {
       const startTime = booking.startTime || (booking.startsAt ? new Date(booking.startsAt) : new Date());
-      return startTime > new Date() && booking.status !== 'cancelled';
+      return startTime > new Date() && !['cancelled', 'rejected'].includes(booking.status);
     })
     .sort((a: Booking, b: Booking) => {
       const aTime = a.startTime || (a.startsAt ? new Date(a.startsAt) : new Date());
@@ -90,7 +137,7 @@ const MyBookingsPage: React.FC = () => {
   const pastBookings = visibleBookings
     .filter((booking: Booking) => {
       const startTime = booking.startTime || (booking.startsAt ? new Date(booking.startsAt) : new Date());
-      return startTime <= new Date() || booking.status === 'cancelled';
+      return startTime <= new Date() || ['cancelled', 'rejected'].includes(booking.status);
     })
     .sort((a: Booking, b: Booking) => {
       const aTime = a.startTime || (a.startsAt ? new Date(a.startsAt) : new Date());
@@ -114,10 +161,7 @@ const MyBookingsPage: React.FC = () => {
     } catch (err: any) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         navigate('/login');
-        return;
       }
-      alert('Не удалось отменить бронирование. Попробуйте позже.');
-      console.error(err);
     }
   };
 

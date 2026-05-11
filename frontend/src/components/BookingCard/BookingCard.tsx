@@ -9,6 +9,19 @@ interface BookingCardProps {
   readOnly?: boolean;
 }
 
+const translateReason = (reason?: string): string => {
+  if (!reason) return 'Причина не указана';
+  
+  const mapping: Record<string, string> = {
+    'external_step_failed': 'Техническая ошибка при проверке доступности',
+    'availability_conflict': 'Аудитория уже занята на это время',
+    'user_booking_limit_exceeded': 'Превышен лимит ваших активных бронирований',
+    'booking_not_found': 'Запись не найдена',
+  };
+
+  return mapping[reason] || reason;
+};
+
 const BookingCard: React.FC<BookingCardProps> = ({
   booking,
   onCancel,
@@ -21,6 +34,7 @@ const BookingCard: React.FC<BookingCardProps> = ({
       case 'pending':
         return '#ff9800';
       case 'cancelled':
+      case 'rejected':
         return '#f44336';
       default:
         return '#666';
@@ -35,6 +49,8 @@ const BookingCard: React.FC<BookingCardProps> = ({
         return 'Ожидает подтверждения';
       case 'cancelled':
         return 'Отменено';
+      case 'rejected':
+        return 'Отклонено';
       default:
         return status;
     }
@@ -47,9 +63,11 @@ const BookingCard: React.FC<BookingCardProps> = ({
 
   const canCancel =
     !readOnly &&
-    booking.status !== 'cancelled' &&
+    !['cancelled', 'rejected'].includes(booking.status) &&
     startTime > new Date() &&
     onCancel;
+
+  const showReason = (booking.status === 'cancelled' || booking.status === 'rejected') && booking.cancellationReason;
 
   return (
     <div className="booking-card">
@@ -89,6 +107,12 @@ const BookingCard: React.FC<BookingCardProps> = ({
             <span>
               {format(createdAt, 'd MMM yyyy, HH:mm')}
             </span>
+          </div>
+        )}
+        {showReason && (
+          <div className="booking-info-item booking-info-item--reason">
+            <span className="booking-info-label">Причина:</span>
+            <span className="booking-cancellation-reason">{translateReason(booking.cancellationReason)}</span>
           </div>
         )}
       </div>

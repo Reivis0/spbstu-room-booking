@@ -416,12 +416,25 @@ void PostgreSQLAsyncClient::drain_results(PendingQuery& q) {
     Result out;
     std::string err_msg;
     bool success = true;
+    int affected_rows = -1;  // -1 means not applicable (e.g., SELECT), >= 0 for modifications
 
     while (PGresult* r = PQgetResult(m_connect.connection)) {
         auto st = PQresultStatus(r);
         if (st == PGRES_TUPLES_OK || st == PGRES_COMMAND_OK) {
             int nf = PQnfields(r);
             int nt = PQntuples(r);
+            
+            // Extract affected rows for modification commands (INSERT/UPDATE/DELETE)
+            // PQcmdTuples returns a string like "300" for affected rows, or "" for SELECT
+            const char* cmd_tuples = PQcmdTuples(r);
+            if (cmd_tuples && cmd_tuples[0] != '\0') {
+                try {
+                    affected_rows = std::stoi(cmd_tuples);
+                } catch (...) {
+                    affected_rows = -1;
+                }
+            }
+            
             for (int i = 0; i < nt; ++i) {
                 Row row_vec;
                 row_vec.reserve(nf);
@@ -448,7 +461,7 @@ void PostgreSQLAsyncClient::drain_results(PendingQuery& q) {
             if (q.conflicts_cb) FinishConflicts_(this, q, std::move(out), success, err_msg.c_str());
             break;
         case PendingQuery::K_Generic:
-            if (q.generic_cb) FinishGeneric_(this, q, std::move(out), success, err_msg.c_str());
+            if (q.generic_cb) FinishGeneric_(this, q, std::move(out), success, err_msg.c_str(), affected_rows);
             break;
     }
     
@@ -472,9 +485,9 @@ void PostgreSQLAsyncClient::FinishConflicts_(PostgreSQLAsyncClient* self, Pendin
     cb->onConflicts(bookings.data(), bookings.size(), ok, err);
 }
 
-void PostgreSQLAsyncClient::FinishGeneric_(PostgreSQLAsyncClient* self, PendingQuery& q, Result&& r, bool ok, const char* err) {
+void PostgreSQLAsyncClient::FinishGeneric_(PostgreSQLAsyncClient* self, PendingQuery& q, Result&& r, bool ok, const char* err, int affected_rows) {
     auto* cb = q.generic_cb.get();
-    if (cb) cb->onResult(r, ok, err);
+    if (cb) cb->onResult(r, ok, err, affected_rows);
 }
 
 

@@ -40,6 +40,28 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-# Load testing outputs
+### Custom ###
+.gemini/
+.DS_Store
+**/.DS_Store
+**/node_modules/
+**/dist/
+**/build/
+.cache/
+**/.cache/
+*.log
+ruz_importer.log
+
+### Node ###
+frontend/node_modules/
+frontend/build/
+frontend/.eslintcache
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnp
+frontend/.pnp.js
+
+### Load testing outputs
 Testing/*_results.txt
 performance/load-test-output.txt

@@ -58,12 +58,12 @@ std::string sha256(const std::string& data) {
 }
 
 struct SyncGenericCb : public IGenericCb {
-    std::promise<std::pair<bool, std::string>> promise;
+    std::promise<std::tuple<bool, std::string, int>> promise;  // ok, error, affected_rows
     std::vector<std::vector<std::string>> result;
 
-    void onResult(const std::vector<std::vector<std::string>>& r, bool ok, const char* err) override {
+    void onResult(const std::vector<std::vector<std::string>>& r, bool ok, const char* err, int affected_rows = -1) override {
         result = r;
-        promise.set_value({ok, err ? err : ""});
+        promise.set_value({ok, err ? err : "", affected_rows});
     }
 };
 
@@ -313,7 +313,19 @@ int64_t RuzImporter::saveRecords(const std::string& university_id, std::vector<S
     return total;
 }
 
-void RuzImporter::insertBatch(const std::vector<ScheduleRecord>& buf) {
+void RuzImporter::insertBatch(const std::vector<ScheduleRecord>& raw_buf) {
+    if (raw_buf.empty()) return;
+
+    std::vector<ScheduleRecord> buf;
+    buf.reserve(raw_buf.size());
+    for (const auto& rec : raw_buf) {
+        if (rec.starts_at < rec.ends_at) {
+            buf.push_back(rec);
+        } else {
+            LOG_WARN("RUZ_IMPORTER: Skipping record with invalid interval: " + rec.starts_at + " >= " + rec.ends_at);
+        }
+    }
+
     if (buf.empty()) return;
 
     std::string sql;
@@ -358,7 +370,7 @@ void RuzImporter::insertBatch(const std::vector<ScheduleRecord>& buf) {
         params.push_back(buf[i].data_hash);     // hash
     }
     
-    sql += " ON CONFLICT (university_id, data_hash) DO NOTHING";
+    sql += " ON CONFLICT (university_id, data_hash) DO NOTHING RETURNING university_id";
 
     int retries = 3;
     while (retries > 0 && !shutdown_) {
@@ -371,16 +383,29 @@ void RuzImporter::insertBatch(const std::vector<ScheduleRecord>& buf) {
         }
         
         auto res = fut.get();
+        bool ok = std::get<0>(res);
+        std::string err_msg = std::get<1>(res);
+        int affected_rows = std::get<2>(res);
 
-        if (res.first) {
-            LOG_INFO("RuzImporter: DB Insert success: " + std::to_string(buf.size()) + " records.");
-            return; // Success
-        } else {
-            LOG_ERROR("RuzImporter: DB Insert failed: " + res.second + ". Retries left: " + std::to_string(retries-1));
+        if (ok) {
+            // Calculate conflict count
+            int sent_count = buf.size();
+            // With RETURNING, affected_rows will be the number of rows actually returned (inserted)
+            int inserted_count = (affected_rows >= 0) ? affected_rows : 0;
+            int conflict_count = sent_count - inserted_count;
             
-            if (res.second.find("connection") != std::string::npos || 
-                res.second.find("closed") != std::string::npos ||
-                res.second.find("terminated") != std::string::npos) 
+            // Log detailed breakdown
+            LOG_INFO("Batch processed: " + std::to_string(sent_count) + 
+                     ". Inserted: " + std::to_string(inserted_count) + 
+                     ". Skipped (Duplicates): " + std::to_string(conflict_count));
+            
+            return; 
+        } else {
+            LOG_ERROR("RuzImporter: DB Insert failed: " + err_msg + ". Retries left: " + std::to_string(retries-1));
+            
+            if (err_msg.find("connection") != std::string::npos || 
+                err_msg.find("closed") != std::string::npos ||
+                err_msg.find("terminated") != std::string::npos) 
             {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 retries--;

@@ -108,11 +108,22 @@ static std::string addDays(const std::string& date_str, int days) {
 
 std::vector<ScheduleRecord> SpbptuParser::fetchRoomSchedule(const RoomInfo& room, const std::string& date_from, const std::string& date_to) {
     std::vector<ScheduleRecord> records;
+    
+    // Validate date range - prevent silent data loss from invalid ranges
+    if (date_from > date_to) {
+        LOG_ERROR("SpbptuParser: Invalid date range: " + date_from + " > " + date_to);
+        return records;
+    }
+    
     std::string current_date = date_from;
     int max_weeks = 52; // Safety limit
     int weeks = 0;
 
     std::vector<std::string> dates;
+    // FIXED: Date strings in YYYY-MM-DD format compare correctly lexicographically
+    // This was verified: ISO 8601 format naturally sorts chronologically as strings
+    // Example: "2026-10-01" < "2026-10-22" < "2026-11-01" (correct!)
+    // Previous bug was likely in addDays() or timezone issues, NOT in string comparison itself
     while (current_date <= date_to && !current_date.empty() && weeks < max_weeks) {
         dates.push_back(current_date);
         std::string next_date = addDays(current_date, 7);
@@ -123,6 +134,8 @@ std::vector<ScheduleRecord> SpbptuParser::fetchRoomSchedule(const RoomInfo& room
         current_date = next_date;
         weeks++;
     }
+    
+    LOG_INFO("SpbptuParser: Date range validation - from: " + date_from + " to: " + date_to + " weeks to fetch: " + std::to_string(weeks));
 
     HttpClient local_http;
     LOG_INFO("SpbptuParser: Starting to fetch " + std::to_string(dates.size()) + " weeks for room " + room.id);

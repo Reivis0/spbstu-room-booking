@@ -212,6 +212,7 @@ public class BookingSagaService {
     private void compensateBooking(BookingSaga saga, Booking booking, String reason) {
         if (booking != null && booking.getStatus() != Booking.BookingStatus.cancelled) {
             booking.setStatus(Booking.BookingStatus.rejected);
+            booking.setCancellationReason(reason);
             bookingRepository.save(booking);
             invalidateCache(booking);
         }

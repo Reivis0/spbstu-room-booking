@@ -31,7 +31,10 @@ FetchContent_MakeAvailable(prometheus-cpp)
 add_subdirectory(log)
 add_subdirectory(protos)
 add_subdirectory(src)
-# add_subdirectory(tests)
+
+if(BUILD_TESTS)
+  add_subdirectory(tests)
+endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

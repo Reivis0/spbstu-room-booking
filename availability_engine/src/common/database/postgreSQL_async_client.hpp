@@ -36,7 +36,9 @@ struct IconflictsCb {
 
 struct IGenericCb {
     virtual ~IGenericCb() = default;
-    virtual void onResult(const std::vector<std::vector<std::string>>& result, bool ok, const char* err) = 0;
+    // onResult: result rows, ok status, error message, affected rows (for INSERT/UPDATE/DELETE)
+    // affected_rows is -1 if not applicable (SELECT queries), >= 0 for modifications
+    virtual void onResult(const std::vector<std::vector<std::string>>& result, bool ok, const char* err, int affected_rows = -1) = 0;
 };
 
 struct PendingQuery {
@@ -99,7 +101,7 @@ private:
 
     static void FinishBookingsByRoomDate_(PostgreSQLAsyncClient* self, PendingQuery& q, Result&& r, bool ok, const char* err);
     static void FinishConflicts_(PostgreSQLAsyncClient* self, PendingQuery& q, Result&& r, bool ok, const char* err);
-    static void FinishGeneric_(PostgreSQLAsyncClient* self, PendingQuery& q, Result&& r, bool ok, const char* err);
+    static void FinishGeneric_(PostgreSQLAsyncClient* self, PendingQuery& q, Result&& r, bool ok, const char* err, int affected_rows = -1);
 
     std::thread m_loop_thread;
     std::atomic<bool> m_running { false };

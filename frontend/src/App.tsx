@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import SchedulePage from './pages/SchedulePage';
 import AdminImportPage from './pages/AdminImportPage';
+import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './store/useAuthStore';
 import { queryClient } from './shared/api/queryClient';
 import { useBookingRealtime } from './shared/ws/useBookingRealtime';
@@ -31,6 +32,7 @@ const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <Router>
         <RealtimeBridge />
+        <Toaster position="top-right" />
         <Layout>
           <Routes>
             <Route path="/" element={<HomePage />} />

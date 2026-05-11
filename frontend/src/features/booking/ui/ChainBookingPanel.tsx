@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 import { bookingsApi, ChainBookingRequest } from '../../../api/bookings';
 import { Room } from '../../../types';
 import { UniversityCode, getUniversity } from '../../../shared/university/universities';
@@ -18,7 +20,8 @@ const addMinutes = (value: string, minutes: number) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   date.setMinutes(date.getMinutes() + minutes);
-  return date.toISOString().slice(0, 16);
+  // Return local time string for datetime-local input
+  return format(date, "yyyy-MM-dd'T'HH:mm");
 };
 
 const ChainBookingPanel: React.FC<ChainBookingPanelProps> = ({
@@ -60,7 +63,20 @@ const ChainBookingPanel: React.FC<ChainBookingPanelProps> = ({
 
   const createChainMutation = useMutation({
     mutationFn: (payload: ChainBookingRequest) => bookingsApi.createChain(payload),
-    onSuccess: onCreated,
+    onSuccess: () => {
+      toast.success('Цепочка успешно забронирована! Все слоты подтверждены.', { duration: 5000 });
+      onCreated();
+    },
+    onError: (err: any) => {
+      if (err.response?.status === 409) {
+        const conflicts = err.response.data;
+        const roomInfo = conflicts && conflicts.length > 0 ? `Аудитория ${conflicts[0].roomId || 'выбранная'} уже занята.` : '';
+        toast.error(`Цепочка не создана. ${roomInfo} Выполнен полный откат (Saga Rollback).`, { duration: 8000 });
+      } else {
+        const errorMessage = err.response?.data?.message || 'Ошибка при создании цепочки. Попробуйте позже.';
+        toast.error(errorMessage, { duration: 6000 });
+      }
+    }
   });
 
   const updateItem = (index: number, field: 'roomId' | 'startsAt' | 'endsAt', value: string) => {
@@ -78,11 +94,15 @@ const ChainBookingPanel: React.FC<ChainBookingPanelProps> = ({
       university,
       purpose,
       title: purpose,
-      items: items.map((item) => ({
-        roomId: item.roomId,
-        startsAt: new Date(item.startsAt).toISOString(),
-        endsAt: new Date(item.endsAt).toISOString(),
-      })),
+      items: items.map((item) => {
+        const start = new Date(item.startsAt);
+        const end = new Date(item.endsAt);
+        return {
+          roomId: item.roomId,
+          startsAt: format(start, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+          endsAt: format(end, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+        };
+      }),
     });
   };
 

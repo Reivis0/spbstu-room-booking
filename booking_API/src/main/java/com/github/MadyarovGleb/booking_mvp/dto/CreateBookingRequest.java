@@ -10,5 +10,5 @@ public class CreateBookingRequest {
     private OffsetDateTime startsAt;
     private OffsetDateTime endsAt;
     private String title;
+    private UUID chainId; // Optional, set by API for chains
 }
-

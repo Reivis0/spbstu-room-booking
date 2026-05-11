@@ -22,9 +22,11 @@ public class BookingController {
     private static final Logger logger = LoggerFactory.getLogger(BookingController.class);
 
     private final BookingService bookingService;
+    private final com.github.MadyarovGleb.booking_mvp.service.ChainBookingSagaOrchestrator chainOrchestrator;
 
-    public BookingController(BookingService bookingService) {
+    public BookingController(BookingService bookingService, com.github.MadyarovGleb.booking_mvp.service.ChainBookingSagaOrchestrator chainOrchestrator) {
         this.bookingService = bookingService;
+        this.chainOrchestrator = chainOrchestrator;
     }
 
     private UUID getCurrentUserId() {
@@ -66,22 +68,29 @@ public class BookingController {
             return ResponseEntity.status(401).build();
         }
         MDC.put("user_id", userId.toString());
-        logger.info("Chain booking creation started items_count={}", body.getItems() != null ? body.getItems().size() : 0);
+        logger.info("Atomic chain booking creation started items_count={}", body.getItems() != null ? body.getItems().size() : 0);
         
-        List<Booking> bookings = new ArrayList<>();
+        List<CreateBookingRequest> requests = new ArrayList<>();
         for (ChainBookingRequest.ChainBookingItem item : body.getItems()) {
-            CreateBookingRequest req = CreateBookingRequest.builder()
+            requests.add(CreateBookingRequest.builder()
                     .roomId(item.getRoomId())
                     .startsAt(item.getStartsAt())
                     .endsAt(item.getEndsAt())
                     .title(body.getTitle() != null ? body.getTitle() : body.getPurpose())
-                    .build();
-            Booking booking = bookingService.createBooking(userId, req);
-            bookings.add(booking);
+                    .build());
         }
         
-        logger.info("Chain booking creation completed successfully count={}", bookings.size());
-        return ResponseEntity.status(201).body(bookings);
+        try {
+            List<Booking> bookings = chainOrchestrator.execute(userId, requests);
+            logger.info("Chain booking creation completed successfully count={}", bookings.size());
+            return ResponseEntity.status(201).body(bookings);
+        } catch (com.github.MadyarovGleb.booking_mvp.exception.BookingConflictException e) {
+            logger.warn("Chain booking failed due to conflict: {}", e.getMessage());
+            return ResponseEntity.status(409).body(e.getConflicts());
+        } catch (Exception e) {
+            logger.error("Chain booking failed unexpectedly", e);
+            return ResponseEntity.status(500).body(e.getMessage());
+        }
     }
 
     @GetMapping("/my")

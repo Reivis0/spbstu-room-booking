@@ -174,18 +174,19 @@ public class BookingService {
             throw new ValidationException("ends_at must be after starts_at");
         }
         
-        // Validate working hours (08:00 - 21:00)
-        LocalTime startTime = req.getStartsAt().toLocalTime();
-        LocalTime endTime = req.getEndsAt().toLocalTime();
+        // Validate working hours in Moscow Timezone (SPbSTU context)
+        java.time.ZoneId mskZone = java.time.ZoneId.of("Europe/Moscow");
+        LocalTime startTime = req.getStartsAt().atZoneSameInstant(mskZone).toLocalTime();
+        LocalTime endTime = req.getEndsAt().atZoneSameInstant(mskZone).toLocalTime();
         
         if (startTime.isBefore(WORKING_HOURS_START)) {
-            logger.warn("Booking validation failed: start time {} is before working hours start {}", startTime, WORKING_HOURS_START);
-            throw new InvalidBookingTimeException("Booking start time must be at or after 08:00. Working hours: 08:00 - 21:00");
+            logger.warn("Booking validation failed: start time {} MSK is before working hours start {}", startTime, WORKING_HOURS_START);
+            throw new InvalidBookingTimeException("Время начала должно быть не ранее 08:00 (МСК).");
         }
         
         if (endTime.isAfter(WORKING_HOURS_END)) {
-            logger.warn("Booking validation failed: end time {} is after working hours end {}", endTime, WORKING_HOURS_END);
-            throw new InvalidBookingTimeException("Booking end time must be at or before 21:00. Working hours: 08:00 - 21:00");
+            logger.warn("Booking validation failed: end time {} MSK is after working hours end {}", endTime, WORKING_HOURS_END);
+            throw new InvalidBookingTimeException("Время окончания должно быть не позднее 21:00 (МСК).");
         }
     }
 

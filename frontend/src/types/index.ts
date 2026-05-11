@@ -44,7 +44,8 @@ export interface Booking {
   startsAt: string;
   endsAt: string;
   title?: string;
-  status: 'pending' | 'confirmed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'rejected' | 'compensation_pending' | 'compensated';
+  cancellationReason?: string;
   createdAt?: string;
   updatedAt?: string;
   roomName?: string;
