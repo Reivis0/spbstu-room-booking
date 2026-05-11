@@ -47,8 +47,19 @@ export const bookingsApi = {
     return response.data;
   },
 
-  cancel: async (id: string): Promise<void> => {
-    await apiClient.delete(`/bookings/${id}`);
+  update: async (id: string, data: Partial<BookingFormData>): Promise<Booking> => {
+    const requestData = {
+      roomId: data.roomId,
+      startsAt: data.startsAt || data.startTime || '',
+      endsAt: data.endsAt || data.endTime || '',
+      title: data.title || data.purpose || undefined,
+    };
+    const response = await apiClient.put<Booking>(`/bookings/${id}`, requestData);
+    return response.data;
+  },
+
+  cancel: async (id: string, reason?: string): Promise<void> => {
+    await apiClient.delete(`/bookings/${id}`, { params: { reason } });
   },
 };
 

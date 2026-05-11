@@ -28,6 +28,7 @@ public class ChainBookingSagaOrchestrator {
     private final AvailabilityEngineClient availabilityEngineClient;
     private final NatsPublisher natsPublisher;
     private final RedisService redis;
+    private final BookingValidator validator;
 
     /**
      * Executes an atomic chain of bookings using Saga.
@@ -37,6 +38,14 @@ public class ChainBookingSagaOrchestrator {
     public List<Booking> execute(UUID userId, List<CreateBookingRequest> requests) {
         UUID chainId = UUID.randomUUID();
         log.info("Starting Chain Saga for user {} with chain_id {}", userId, chainId);
+
+        if (requests == null || requests.isEmpty()) {
+            throw new com.github.MadyarovGleb.booking_mvp.exception.ValidationException("Chain must contain at least one item");
+        }
+
+        for (CreateBookingRequest req : requests) {
+            validator.validate(req);
+        }
 
         List<Booking> pendingBookings = new ArrayList<>();
 
@@ -88,6 +97,10 @@ public class ChainBookingSagaOrchestrator {
             log.info("Chain Saga {} completed successfully", chainId);
             return confirmedBookings;
 
+        } catch (BookingConflictException e) {
+            log.warn("Chain Saga {} failed due to conflict, compensating already confirmed records.", chainId);
+            compensateChain(chainId, "conflict");
+            throw e;
         } catch (Exception e) {
             log.error("Chain Saga {} failed, compensating all records. Reason: {}", chainId, e.getMessage());
             compensateChain(chainId, e.getMessage());

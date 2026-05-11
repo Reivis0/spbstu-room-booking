@@ -162,10 +162,30 @@ const BookingPage: React.FC = () => {
 
   const getMinDateTime = () => {
     const now = new Date();
-    // Round to the next 5 minutes for better UX
-    const minutes = now.getMinutes();
-    now.setMinutes(Math.ceil(minutes / 5) * 5, 0, 0);
-    return format(now, "yyyy-MM-dd'T'HH:mm");
+    
+    // Convert to MSK for comparison
+    const mskOffset = 3 * 60; // MSK is UTC+3
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const mskNow = new Date(utcTime + (mskOffset * 60000));
+    
+    const hour = mskNow.getHours();
+    
+    if (hour < 8) {
+      // If before 8:00 MSK, set to 08:00 today
+      mskNow.setHours(8, 0, 0, 0);
+    } else if (hour >= 21) {
+      // If after 21:00 MSK, set to 08:00 tomorrow
+      mskNow.setDate(mskNow.getDate() + 1);
+      mskNow.setHours(8, 0, 0, 0);
+    } else {
+      // Otherwise round to next 5 min
+      const minutes = mskNow.getMinutes();
+      mskNow.setMinutes(Math.ceil(minutes / 5) * 5, 0, 0);
+    }
+
+    // Convert back to local browser time for the input value
+    const localResult = new Date(mskNow.getTime() - (mskOffset * 60000) - (now.getTimezoneOffset() * 60000));
+    return format(localResult, "yyyy-MM-dd'T'HH:mm");
   };
 
   if (loading) {
@@ -274,13 +294,15 @@ const BookingPage: React.FC = () => {
           >
             Отмена
           </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="btn btn-primary"
-          >
-            {submitting ? 'Создание...' : 'Забронировать'}
-          </button>
+          {!chainMode && (
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn btn-primary"
+            >
+              {submitting ? 'Создание...' : 'Забронировать'}
+            </button>
+          )}
         </div>
       </form>
       {chainMode && (

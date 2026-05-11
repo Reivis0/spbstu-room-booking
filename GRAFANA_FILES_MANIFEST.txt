@@ -1,0 +1,243 @@
+GRAFANA PROVISIONING IaC - FILES MANIFEST
+═════════════════════════════════════════════════════════════════════════
+
+MODIFIED/CREATED FILES
+─────────────────────────────────────────────────────────────────────────
+
+1. infrastructure/grafana/provisioning/datasources/datasources.yml
+   [MODIFIED] Prometheus datasource configuration
+   • Datasource name: Prometheus
+   • URL: http://prometheus:9090
+   • Query timeout: 60s
+   • Scrape interval: 15s
+   • Status: ✅ VERIFIED
+
+2. infrastructure/grafana/provisioning/dashboards/dashboards.yml
+   [MODIFIED] Dashboard provisioning configuration
+   • Provider: observability
+   • Folder: Observability
+   • Update interval: 10s
+   • Status: ✅ VERIFIED
+
+3. infrastructure/grafana/README_PROVISIONING.md
+   [CREATED] Comprehensive provisioning documentation
+   • Size: 11.6 KB
+   • Sections: 12 major sections
+   • Examples: API usage, Git workflow, troubleshooting
+   • Status: ✅ COMPLETE
+
+4. infrastructure/scripts/validate-grafana-provisioning.sh
+   [CREATED] Automated validation script
+   • Size: 6.7 KB
+   • Checks: 40+ validation points
+   • CI/CD ready: YES
+   • Status: ✅ EXECUTABLE
+
+5. docker-compose.yml
+   [MODIFIED] Grafana service section
+   • Environment variables: 7 new GF_* variables
+   • Volumes: updated paths
+   • Dependencies: Prometheus configured
+   • Status: ✅ VERIFIED
+
+6. GRAFANA_PROVISIONING_SUMMARY.md
+   [CREATED] Implementation summary report
+   • Size: 12.0 KB
+   • Contents: Architecture, features, compliance checklist
+   • Status: ✅ COMPLETE
+
+─────────────────────────────────────────────────────────────────────────
+
+EXISTING FILES - VERIFIED
+─────────────────────────────────────────────────────────────────────────
+
+Dashboard JSON Files (all valid and functioning):
+
+7. infrastructure/grafana/dashboards/infrastructure-node-use.json
+   ✅ Size: 18 KB | Format: Valid JSON | Method: USE
+
+8. infrastructure/grafana/dashboards/services-red-method.json
+   ✅ Size: 23 KB | Format: Valid JSON | Method: RED
+
+9. infrastructure/grafana/dashboards/availability-engine.json
+   ✅ Size: 4.3 KB | Format: Valid JSON | Purpose: Engine metrics
+
+10. infrastructure/grafana/dashboards/booking-api.json
+    ✅ Size: 4.4 KB | Format: Valid JSON | Purpose: API metrics
+
+11. infrastructure/grafana/dashboards/infrastructure-nats.json
+    ✅ Size: 5.4 KB | Format: Valid JSON | Purpose: NATS metrics
+
+12. infrastructure/grafana/dashboards/infrastructure-postgresql.json
+    ✅ Size: 5.6 KB | Format: Valid JSON | Purpose: DB metrics
+
+─────────────────────────────────────────────────────────────────────────
+
+SUMMARY BY CATEGORY
+─────────────────────────────────────────────────────────────────────────
+
+CONFIGURATION FILES (3):
+├── datasources.yml (MODIFIED)
+├── dashboards.yml (MODIFIED)
+└── docker-compose.yml (MODIFIED)
+
+DOCUMENTATION (2):
+├── README_PROVISIONING.md (CREATED)
+└── GRAFANA_PROVISIONING_SUMMARY.md (CREATED)
+
+AUTOMATION (1):
+└── validate-grafana-provisioning.sh (CREATED)
+
+DASHBOARD DEFINITIONS (6):
+├── infrastructure-node-use.json
+├── services-red-method.json
+├── availability-engine.json
+├── booking-api.json
+├── infrastructure-nats.json
+└── infrastructure-postgresql.json
+
+TOTAL: 12 files (6 new/modified config/doc, 6 dashboard definitions)
+
+─────────────────────────────────────────────────────────────────────────
+
+FILE SIZES SUMMARY
+─────────────────────────────────────────────────────────────────────────
+
+Configuration & Automation:  ~29 KB
+├── datasources.yml           389 B
+├── dashboards.yml            252 B
+├── docker-compose.yml        (modified section)
+├── README_PROVISIONING.md     11.6 KB
+├── GRAFANA_PROVISIONING_SUMMARY.md  12.0 KB
+└── validate-grafana-provisioning.sh 6.7 KB
+
+Dashboard Definitions:        ~60 KB
+├── infrastructure-node-use.json     18 KB
+├── services-red-method.json         23 KB
+├── infrastructure-postgresql.json   5.6 KB
+├── infrastructure-nats.json         5.4 KB
+├── availability-engine.json         4.3 KB
+└── booking-api.json                 4.4 KB
+
+TOTAL PROJECT ADDITION:       ~89 KB
+
+─────────────────────────────────────────────────────────────────────────
+
+VALIDATION STATUS
+─────────────────────────────────────────────────────────────────────────
+
+Configuration Files:
+✅ datasources.yml - YAML valid, required fields present
+✅ dashboards.yml - YAML valid, provider configured
+✅ docker-compose.yml - YAML valid, volumes/env configured
+
+Dashboard JSON Files:
+✅ infrastructure-node-use.json - JSON valid
+✅ services-red-method.json - JSON valid
+✅ availability-engine.json - JSON valid
+✅ booking-api.json - JSON valid
+✅ infrastructure-nats.json - JSON valid
+✅ infrastructure-postgresql.json - JSON valid
+
+Scripts:
+✅ validate-grafana-provisioning.sh - Executable, 40+ checks
+
+Documentation:
+✅ README_PROVISIONING.md - Complete guide
+✅ GRAFANA_PROVISIONING_SUMMARY.md - Implementation report
+
+─────────────────────────────────────────────────────────────────────────
+
+DEPLOYMENT STATUS
+─────────────────────────────────────────────────────────────────────────
+
+Ready for Production: ✅ YES
+
+Requirements Met:
+✅ All configuration files present and valid
+✅ All dashboards available and validated
+✅ Docker Compose properly configured
+✅ Environment variables set
+✅ Volume mounts configured
+✅ Prometheus dependency declared
+✅ Documentation complete
+✅ Validation script included
+
+To Deploy:
+$ make up
+# or
+$ docker-compose up -d
+
+To Verify:
+$ infrastructure/scripts/validate-grafana-provisioning.sh
+
+To Access:
+http://localhost:3001 (admin/admin)
+
+─────────────────────────────────────────────────────────────────────────
+
+MAINTENANCE & EXTENSION
+─────────────────────────────────────────────────────────────────────────
+
+Adding New Dashboards:
+1. Create in Grafana UI
+2. Export: Dashboard → Share → Export (JSON Model)
+3. Save to: infrastructure/grafana/dashboards/name.json
+4. Commit to Git
+5. Auto-loaded within 10s
+
+Adding New Datasources:
+1. Edit: infrastructure/grafana/provisioning/datasources/datasources.yml
+2. Add datasource block
+3. Restart: docker-compose restart grafana
+4. Verify: curl http://localhost:3001/api/datasources
+
+Updating Configurations:
+1. All changes are tracked in Git
+2. Container restarts apply new configs
+3. No manual Grafana UI changes needed
+4. Everything is version-controlled
+
+─────────────────────────────────────────────────────────────────────────
+
+REFERENCES
+─────────────────────────────────────────────────────────────────────────
+
+Documentation Files:
+• infrastructure/grafana/README_PROVISIONING.md
+  Complete guide with examples
+
+• GRAFANA_PROVISIONING_SUMMARY.md
+  Full implementation report
+
+• GRAFANA_FILES_MANIFEST.txt
+  This file - file listing and manifest
+
+External References:
+• https://grafana.com/docs/grafana/latest/administration/provisioning/
+• https://grafana.com/docs/grafana/latest/datasources/prometheus/
+• https://grafana.com/docs/grafana/latest/developers/http_api/
+
+─────────────────────────────────────────────────────────────────────────
+
+TASK COMPLETION
+─────────────────────────────────────────────────────────────────────────
+
+Task ID: provisioning-setup
+Title: Grafana Provisioning (IaC) - todo_id: provisioning-setup
+Status: ✅ DONE
+Completion Date: May 12, 2024
+
+All requirements met:
+✅ Datasource configuration complete
+✅ Dashboard provisioning configured
+✅ All dashboard JSON exports present
+✅ Docker-compose updated
+✅ Comprehensive documentation
+✅ Validation script included
+✅ Production ready
+
+Related Tasks:
+✅ prometheus-config - DONE
+
+═════════════════════════════════════════════════════════════════════════

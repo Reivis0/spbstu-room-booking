@@ -11,6 +11,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import SchedulePage from './pages/SchedulePage';
 import AdminImportPage from './pages/AdminImportPage';
+import AdminBookingsPage from './pages/AdminBookingsPage';
+import AdminRoute from './components/ProtectedRoute/AdminRoute';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './store/useAuthStore';
 import { queryClient } from './shared/api/queryClient';
@@ -66,6 +68,14 @@ const App: React.FC = () => {
                 <ProtectedRoute>
                   <AdminImportPage />
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/bookings"
+              element={
+                <AdminRoute>
+                  <AdminBookingsPage />
+                </AdminRoute>
               }
             />
             <Route path="/login" element={<LoginPage />} />

@@ -3,6 +3,13 @@ package com.github.MadyarovGleb.booking_mvp.controller;
 import com.github.MadyarovGleb.booking_mvp.dto.RoomScheduleResponse;
 import com.github.MadyarovGleb.booking_mvp.entity.Room;
 import com.github.MadyarovGleb.booking_mvp.service.RoomService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -19,6 +26,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/rooms")
+@Tag(name = "Rooms", description = "Управление аудиториями и получение расписания")
 public class RoomController {
     private static final Logger logger = LoggerFactory.getLogger(RoomController.class);
 
@@ -28,17 +36,25 @@ public class RoomController {
         this.roomService = roomService;
     }
 
+    @Operation(
+            summary = "Поиск аудиторий",
+            description = "Фильтрация аудиторий по зданию, вместимости, удобствам и университету."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Успешный поиск"),
+            @ApiResponse(responseCode = "400", description = "Некорректные параметры запроса")
+    })
     @GetMapping
     public ResponseEntity<?> search(
-            @RequestParam(required = false) UUID building_id,
-            @RequestParam(required = false) Integer capacity_min,
-            @RequestParam(required = false) Integer capacity_max,
-            @RequestParam(required = false) List<String> features,
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) String university,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_to,
-            @RequestParam(defaultValue = "false") boolean unpaged,
+            @Parameter(description = "ID здания") @RequestParam(required = false) UUID building_id,
+            @Parameter(description = "Минимальная вместимость") @RequestParam(required = false) Integer capacity_min,
+            @Parameter(description = "Максимальная вместимость") @RequestParam(required = false) Integer capacity_max,
+            @Parameter(description = "Список удобств (WiFi, Projector и т.д.)") @RequestParam(required = false) List<String> features,
+            @Parameter(description = "Текстовый поиск по названию") @RequestParam(required = false) String search,
+            @Parameter(description = "Код университета (SPBSTU, SPBU, LETI)") @RequestParam(required = false) String university,
+            @Parameter(description = "Доступна с (ISO DATE TIME)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_from,
+            @Parameter(description = "Доступна до (ISO DATE TIME)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime available_to,
+            @Parameter(description = "Отключить пагинацию (вернуть плоский список)") @RequestParam(defaultValue = "false") boolean unpaged,
             @PageableDefault(size = 20) Pageable pageable
     ) {
         if (building_id != null) {
@@ -72,8 +88,13 @@ public class RoomController {
         }
     }
 
+    @Operation(summary = "Получить информацию об аудитории по ID")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Информация найдена"),
+            @ApiResponse(responseCode = "404", description = "Аудитория не найдена")
+    })
     @GetMapping("/{id}")
-    public ResponseEntity<Room> get(@PathVariable UUID id) {
+    public ResponseEntity<Room> get(@Parameter(description = "UUID аудитории") @PathVariable UUID id) {
         MDC.put("room_id", id.toString());
         logger.info("Room metadata request started");
         Room room = roomService.getById(id);
@@ -81,12 +102,13 @@ public class RoomController {
         return ResponseEntity.ok(room);
     }
 
+    @Operation(summary = "Получить доступные временные слоты для бронирования")
     @GetMapping("/{id}/availability")
     public ResponseEntity<?> availability(
-            @PathVariable UUID id,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date,
-            @RequestParam(defaultValue = "30") int min_duration,
-            @RequestParam(required = false) String university
+            @Parameter(description = "UUID аудитории") @PathVariable UUID id,
+            @Parameter(description = "Дата (YYYY-MM-DD)") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date,
+            @Parameter(description = "Минимальная длительность в минутах") @RequestParam(defaultValue = "30") int min_duration,
+            @Parameter(description = "Код университета") @RequestParam(required = false) String university
     ) {
         MDC.put("room_id", id.toString());
         logger.info("Room availability request started date={} min_duration_minutes={}", date, min_duration);
@@ -95,11 +117,15 @@ public class RoomController {
         return ResponseEntity.ok(slots);
     }
 
+    @Operation(
+            summary = "Получить расписание аудитории",
+            description = "Возвращает список занятых слотов (пары + подтвержденные бронирования)."
+    )
     @GetMapping("/{id}/schedule")
     public ResponseEntity<RoomScheduleResponse> getSchedule(
-            @PathVariable UUID id,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date,
-            @RequestParam(required = false) String university
+            @Parameter(description = "UUID аудитории") @PathVariable UUID id,
+            @Parameter(description = "Дата (YYYY-MM-DD)") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String date,
+            @Parameter(description = "Код университета") @RequestParam(required = false) String university
     ) {
         MDC.put("room_id", id.toString());
         logger.info("Room schedule request started roomId={} date={}", id, date);

@@ -5,6 +5,15 @@ import com.github.MadyarovGleb.booking_mvp.dto.CreateBookingRequest;
 import com.github.MadyarovGleb.booking_mvp.entity.Booking;
 import com.github.MadyarovGleb.booking_mvp.exception.ForbiddenException;
 import com.github.MadyarovGleb.booking_mvp.service.BookingService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -18,6 +27,8 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/bookings")
+@Tag(name = "Bookings", description = "Управление бронированиями")
+@SecurityRequirement(name = "bearerAuth")
 public class BookingController {
     private static final Logger logger = LoggerFactory.getLogger(BookingController.class);
 
@@ -42,6 +53,14 @@ public class BookingController {
         return null;
     }
 
+    @Operation(summary = "Создать новое бронирование")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Бронирование создано", 
+                    content = @Content(schema = @Schema(implementation = Booking.class))),
+            @ApiResponse(responseCode = "400", description = "Некорректные данные"),
+            @ApiResponse(responseCode = "401", description = "Не авторизован"),
+            @ApiResponse(responseCode = "409", description = "Конфликт времени (аудитория занята)")
+    })
     @PostMapping
     public ResponseEntity<?> create(@RequestBody CreateBookingRequest body) {
         var userId = getCurrentUserId();
@@ -60,6 +79,12 @@ public class BookingController {
         return ResponseEntity.status(201).body(booking);
     }
 
+    @Operation(summary = "Создать атомарную цепочку бронирований", 
+               description = "Бронирует несколько слотов за один раз. Если хотя бы один занят — отменяются все.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Цепочка создана"),
+            @ApiResponse(responseCode = "409", description = "Конфликт в одном или нескольких интервалах")
+    })
     @PostMapping("/chain")
     public ResponseEntity<?> createChain(@RequestBody ChainBookingRequest body) {
         var userId = getCurrentUserId();
@@ -93,6 +118,20 @@ public class BookingController {
         }
     }
 
+    @Operation(summary = "Получить все бронирования (только для админа)")
+    @GetMapping
+    public ResponseEntity<List<Booking>> getAll() {
+        var role = getCurrentUserRole();
+        if (role == null || !role.equals("admin")) {
+            logger.warn("Get all bookings rejected due to insufficient permissions");
+            return ResponseEntity.status(403).build();
+        }
+        List<Booking> bookings = bookingService.listAll();
+        logger.info("All bookings retrieved successfully count={}", bookings.size());
+        return ResponseEntity.ok(bookings);
+    }
+
+    @Operation(summary = "Получить мои бронирования")
     @GetMapping("/my")
     public ResponseEntity<List<Booking>> my() {
         var userId = getCurrentUserId();
@@ -106,8 +145,9 @@ public class BookingController {
         return ResponseEntity.ok(bookings);
     }
 
+    @Operation(summary = "Получить детали бронирования по ID")
     @GetMapping("/{id}")
-    public ResponseEntity<?> get(@PathVariable UUID id) {
+    public ResponseEntity<?> get(@Parameter(description = "UUID бронирования") @PathVariable UUID id) {
         MDC.put("booking_id", id.toString());
         var booking = bookingService.getById(id);
         var userId = getCurrentUserId();
@@ -123,8 +163,11 @@ public class BookingController {
         return ResponseEntity.ok(booking);
     }
 
+    @Operation(summary = "Обновить бронирование")
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(@PathVariable UUID id, @RequestBody CreateBookingRequest body) {
+    public ResponseEntity<?> update(
+            @Parameter(description = "UUID бронирования") @PathVariable UUID id, 
+            @RequestBody CreateBookingRequest body) {
         var userId = getCurrentUserId();
         var role = getCurrentUserRole();
         if (userId == null) {
@@ -142,8 +185,11 @@ public class BookingController {
         return ResponseEntity.ok(booking);
     }
 
+    @Operation(summary = "Отменить/удалить бронирование")
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> cancel(@PathVariable UUID id) {
+    public ResponseEntity<?> cancel(
+            @Parameter(description = "UUID бронирования") @PathVariable UUID id, 
+            @Parameter(description = "Причина отмены") @RequestParam(required = false) String reason) {
         var userId = getCurrentUserId();
         var role = getCurrentUserRole();
         if (userId == null) {
@@ -153,7 +199,7 @@ public class BookingController {
         MDC.put("user_id", userId.toString());
         MDC.put("booking_id", id.toString());
         logger.info("Booking cancellation started");
-        bookingService.cancel(id, userId, role);
+        bookingService.cancel(id, userId, role, reason);
         logger.info("Booking cancellation completed successfully");
         return ResponseEntity.noContent().build();
     }

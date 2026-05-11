@@ -110,7 +110,7 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 180s
 
-  booking_api:
+  booking-api:
     build:
       context: ./booking_API
       dockerfile: Dockerfile
@@ -119,7 +119,7 @@ services:
     volumes:
       - maven_cache:/root/.m2
     ports:
-      - "127.0.0.1:8081:8081"
+      - "8081:8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?stringtype=unspecified
       DB_USER: ${POSTGRES_USER}
@@ -283,7 +283,7 @@ services:
     networks:
       - booking-net
     depends_on:
-      booking_api:
+      booking-api:
         condition: service_healthy
     restart: unless-stopped
 
@@ -317,6 +317,7 @@ services:
     volumes:
       - prometheus_data:/prometheus
       - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/prometheus/recording_rules.yml:/etc/prometheus/recording_rules.yml:ro
     deploy:
       resources:
         limits:
@@ -341,11 +342,16 @@ services:
       - "127.0.0.1:3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-worldmap-panel,grafana-piechart-panel
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_USERS_DEFAULT_THEME=dark
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/infrastructure-node-use.json
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./infrastructure/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     deploy:
       resources:
         limits:

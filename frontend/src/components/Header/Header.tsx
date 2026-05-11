@@ -38,6 +38,11 @@ const Header: React.FC = () => {
               Мои бронирования
             </Link>
           )}
+          {isAuthenticated && user?.role === 'admin' && (
+            <Link to="/admin/bookings" className="nav__link">
+              Все бронирования
+            </Link>
+          )}
         </nav>
         <div className="header__actions">
           <UniversitySelect

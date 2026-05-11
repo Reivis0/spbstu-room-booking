@@ -44,19 +44,22 @@ public class BookingService {
     private final OutboxService outboxService;
     private final BookingSagaService bookingSagaService;
     private final RedisService redis;
+    private final BookingValidator validator;
 
     public BookingService(
             BookingRepository bookingRepository,
             AvailabilityEngineClient availability,
             OutboxService outboxService,
             BookingSagaService bookingSagaService,
-            RedisService redis
+            RedisService redis,
+            BookingValidator validator
     ) {
         this.bookingRepository = bookingRepository;
         this.availability = availability;
         this.outboxService = outboxService;
         this.bookingSagaService = bookingSagaService;
         this.redis = redis;
+        this.validator = validator;
     }
 
     @Retryable(
@@ -67,7 +70,7 @@ public class BookingService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Booking createBooking(UUID userId, CreateBookingRequest req) {
         MDC.put("user_id", userId.toString());
-        validateTimes(req);
+        validator.validate(req);
         MDC.put("room_id", req.getRoomId().toString());
         logger.info("Booking creation accepted, starting saga");
 
@@ -103,7 +106,9 @@ public class BookingService {
         checkActorPermission(booking, actorId, actorRole);
         if (booking.getStartsAt().isBefore(OffsetDateTime.now()))
             throw new ValidationException("cannot update a booking that already started");
-        validateTimes(req);
+        
+        validator.validate(req);
+        
         MDC.put("room_id", req.getRoomId().toString());
         logger.info("Booking update validation started");
 
@@ -136,7 +141,7 @@ public class BookingService {
     }
 
     @Transactional
-    public Booking cancel(UUID id, UUID actorId, String actorRole) {
+    public Booking cancel(UUID id, UUID actorId, String actorRole, String reason) {
         MDC.put("user_id", actorId.toString());
         MDC.put("booking_id", id.toString());
         Booking booking = bookingRepository.findById(id)
@@ -144,50 +149,15 @@ public class BookingService {
         checkActorPermission(booking, actorId, actorRole);
 
         booking.setStatus(Booking.BookingStatus.cancelled);
+        if (reason != null && !reason.trim().isEmpty()) {
+            booking.setCancellationReason(reason);
+        }
         Booking cancelled = bookingRepository.save(booking);
         outboxService.addEvent(OutboxEventType.BOOKING_CANCELLED, eventPayload(cancelled));
 
         invalidateCache(cancelled);
         logger.info("Booking cancelled successfully");
         return cancelled;
-    }
-
-    private void validateTimes(CreateBookingRequest req) {
-        if (req == null) {
-            logger.warn("Booking validation failed because request body is missing");
-            throw new ValidationException("request body is required");
-        }
-        if (req.getRoomId() == null) {
-            logger.warn("Booking validation failed because room_id is missing");
-            throw new ValidationException("room_id is required");
-        }
-        if (req.getStartsAt() == null || req.getEndsAt() == null) {
-            logger.warn("Booking validation failed because time bounds are missing");
-            throw new ValidationException("starts_at and ends_at are required");
-        }
-        if (req.getStartsAt().isBefore(OffsetDateTime.now())) {
-            logger.warn("Booking validation failed because starts_at is in the past");
-            throw new ValidationException("starts_at in the past");
-        }
-        if (!req.getEndsAt().isAfter(req.getStartsAt())) {
-            logger.warn("Booking validation failed because ends_at is not after starts_at");
-            throw new ValidationException("ends_at must be after starts_at");
-        }
-        
-        // Validate working hours in Moscow Timezone (SPbSTU context)
-        java.time.ZoneId mskZone = java.time.ZoneId.of("Europe/Moscow");
-        LocalTime startTime = req.getStartsAt().atZoneSameInstant(mskZone).toLocalTime();
-        LocalTime endTime = req.getEndsAt().atZoneSameInstant(mskZone).toLocalTime();
-        
-        if (startTime.isBefore(WORKING_HOURS_START)) {
-            logger.warn("Booking validation failed: start time {} MSK is before working hours start {}", startTime, WORKING_HOURS_START);
-            throw new InvalidBookingTimeException("Время начала должно быть не ранее 08:00 (МСК).");
-        }
-        
-        if (endTime.isAfter(WORKING_HOURS_END)) {
-            logger.warn("Booking validation failed: end time {} MSK is after working hours end {}", endTime, WORKING_HOURS_END);
-            throw new InvalidBookingTimeException("Время окончания должно быть не позднее 21:00 (МСК).");
-        }
     }
 
     private void checkActorPermission(Booking booking, UUID actorId, String actorRole) {

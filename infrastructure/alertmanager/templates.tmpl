@@ -1,0 +1,47 @@
+{{ define "slack.default.title" -}}
+  {{- if eq .Status "firing" -}}
+    🚨 {{ .Alerts.Firing | len }} firing
+  {{- else -}}
+    ✅ {{ .Alerts.Resolved | len }} resolved
+  {{- end -}}
+  : {{ .GroupLabels.alertname }}
+{{- end }}
+
+{{ define "slack.default.text" -}}
+  {{ range .Alerts -}}
+    {{- if .Labels.instance }}
+      *Instance:* {{ .Labels.instance }}
+    {{- end }}
+    {{- if .Labels.service }}
+      *Service:* {{ .Labels.service }}
+    {{- end }}
+    {{- if .Labels.environment }}
+      *Environment:* {{ .Labels.environment }}
+    {{- end }}
+    {{- if .Annotations.summary }}
+      *Summary:* {{ .Annotations.summary }}
+    {{- end }}
+    {{- if .Annotations.description }}
+      *Description:* {{ .Annotations.description }}
+    {{- end }}
+    {{- if .Annotations.runbook_url }}
+      *Runbook:* {{ .Annotations.runbook_url }}
+    {{- end }}
+    {{- if .Annotations.dashboard_url }}
+      *Dashboard:* {{ .Annotations.dashboard_url }}
+    {{- end }}
+  {{ end -}}
+{{ end }}
+
+{{ define "pagerduty.default.instances" -}}
+  {{- range $index, $alert := .Alerts }}
+    {{- if $index }}, {{ end }}
+    {{- $alert.Labels.instance }}
+  {{- end }}
+{{ end }}
+
+{{ define "pagerduty.default.description" -}}
+  {{- if eq .Status "firing" }}[FIRING]{{ else }}[RESOLVED]{{ end }}
+  {{ .GroupLabels.alertname }}
+  {{- if .CommonAnnotations.summary }}: {{ .CommonAnnotations.summary }}{{ end }}
+{{- end }}

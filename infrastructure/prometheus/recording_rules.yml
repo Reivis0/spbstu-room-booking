@@ -1,0 +1,250 @@
+groups:
+  # ===== REQUEST RATE RULES =====
+  - name: request_rates
+    interval: 15s
+    rules:
+      # HTTP request rates (1-minute window)
+      - record: rate:http_requests_total:1m
+        expr: rate(http_requests_total[1m])
+
+      # HTTP request rates aggregated by method
+      - record: rate:http_requests_total:1m:by_method
+        expr: sum by (method) (rate(http_requests_total[1m]))
+
+      # HTTP request rates aggregated by status
+      - record: rate:http_requests_total:1m:by_status
+        expr: sum by (status) (rate(http_requests_total[1m]))
+
+      # HTTP request rates aggregated by endpoint
+      - record: rate:http_requests_total:1m:by_endpoint
+        expr: sum by (endpoint) (rate(http_requests_total[1m]))
+
+      # gRPC request rates (1-minute window)
+      - record: rate:grpc_requests_total:1m
+        expr: rate(grpc_server_handled_total[1m])
+
+      # gRPC request rates by method
+      - record: rate:grpc_requests_total:1m:by_method
+        expr: sum by (grpc_method) (rate(grpc_server_handled_total[1m]))
+
+      # gRPC request rates by status
+      - record: rate:grpc_requests_total:1m:by_status
+        expr: sum by (grpc_code) (rate(grpc_server_handled_total[1m]))
+
+  # ===== ERROR RATE RULES =====
+  - name: error_rates
+    interval: 15s
+    rules:
+      # HTTP 5xx errors per second (1-minute window)
+      - record: rate:http_errors_5xx:1m
+        expr: sum(rate(http_requests_total{status=~"5.."}[1m]))
+
+      # HTTP 5xx errors by endpoint
+      - record: rate:http_errors_5xx:1m:by_endpoint
+        expr: sum by (endpoint) (rate(http_requests_total{status=~"5.."}[1m]))
+
+      # HTTP 4xx errors per second (1-minute window)
+      - record: rate:http_errors_4xx:1m
+        expr: sum(rate(http_requests_total{status=~"4.."}[1m]))
+
+      # HTTP 4xx errors by endpoint
+      - record: rate:http_errors_4xx:1m:by_endpoint
+        expr: sum by (endpoint) (rate(http_requests_total{status=~"4.."}[1m]))
+
+      # HTTP error rate percentage (5xx)
+      - record: rate:http_error_percentage_5xx:1m
+        expr: (sum(rate(http_requests_total{status=~"5.."}[1m])) / sum(rate(http_requests_total[1m]))) * 100
+
+      # HTTP error rate percentage (4xx)
+      - record: rate:http_error_percentage_4xx:1m
+        expr: (sum(rate(http_requests_total{status=~"4.."}[1m])) / sum(rate(http_requests_total[1m]))) * 100
+
+      # gRPC errors (non-zero status codes)
+      - record: rate:grpc_errors_total:1m
+        expr: sum(rate(grpc_server_handled_total{grpc_code!="OK"}[1m]))
+
+      # gRPC error rate percentage
+      - record: rate:grpc_error_percentage:1m
+        expr: (sum(rate(grpc_server_handled_total{grpc_code!="OK"}[1m])) / sum(rate(grpc_server_handled_total[1m]))) * 100
+
+  # ===== LATENCY RULES =====
+  - name: latency_quantiles
+    interval: 15s
+    rules:
+      # HTTP request duration - p95 (5-minute window)
+      - record: latency:http_request_duration_p95:5m
+        expr: histogram_quantile(0.95, sum by (le, endpoint) (rate(http_request_duration_seconds_bucket[5m])))
+
+      # HTTP request duration - p99 (5-minute window)
+      - record: latency:http_request_duration_p99:5m
+        expr: histogram_quantile(0.99, sum by (le, endpoint) (rate(http_request_duration_seconds_bucket[5m])))
+
+      # HTTP request duration - p50/median (5-minute window)
+      - record: latency:http_request_duration_p50:5m
+        expr: histogram_quantile(0.50, sum by (le, endpoint) (rate(http_request_duration_seconds_bucket[5m])))
+
+      # HTTP request duration - p99 (global)
+      - record: latency:http_request_duration_p99_global:5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
+
+      # Average HTTP request duration
+      - record: latency:http_request_duration_avg:1m
+        expr: sum(rate(http_request_duration_seconds_sum[1m])) / sum(rate(http_request_duration_seconds_count[1m]))
+
+      # Average HTTP request duration by endpoint
+      - record: latency:http_request_duration_avg:1m:by_endpoint
+        expr: sum by (endpoint) (rate(http_request_duration_seconds_sum[1m])) / sum by (endpoint) (rate(http_request_duration_seconds_count[1m]))
+
+      # gRPC request duration - p95
+      - record: latency:grpc_request_duration_p95:5m
+        expr: histogram_quantile(0.95, sum by (le, grpc_method) (rate(grpc_server_handling_seconds_bucket[5m])))
+
+      # gRPC request duration - p99
+      - record: latency:grpc_request_duration_p99:5m
+        expr: histogram_quantile(0.99, sum by (le, grpc_method) (rate(grpc_server_handling_seconds_bucket[5m])))
+
+      # Average gRPC request duration
+      - record: latency:grpc_request_duration_avg:1m
+        expr: sum(rate(grpc_server_handling_seconds_sum[1m])) / sum(rate(grpc_server_handling_seconds_count[1m]))
+
+  # ===== INFRASTRUCTURE METRICS =====
+  - name: infrastructure
+    interval: 15s
+    rules:
+      # CPU usage by instance
+      - record: node:cpu_usage:by_instance
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+      # Memory usage percentage by instance
+      - record: node:memory_usage_percentage:by_instance
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+
+      # Disk usage percentage by instance and device
+      - record: node:disk_usage_percentage:by_instance:by_device
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100
+
+      # Disk I/O read rate by instance (KB/s)
+      - record: node:disk_read_rate:by_instance
+        expr: sum by (instance) (rate(node_disk_read_bytes_total[1m])) / 1024
+
+      # Disk I/O write rate by instance (KB/s)
+      - record: node:disk_write_rate:by_instance
+        expr: sum by (instance) (rate(node_disk_written_bytes_total[1m])) / 1024
+
+      # Network throughput inbound by instance (MB/s)
+      - record: node:network_receive_rate:by_instance
+        expr: sum by (instance) (rate(node_network_receive_bytes_total[1m])) / (1024 * 1024)
+
+      # Network throughput outbound by instance (MB/s)
+      - record: node:network_transmit_rate:by_instance
+        expr: sum by (instance) (rate(node_network_transmit_bytes_total[1m])) / (1024 * 1024)
+
+      # Container memory usage percentage
+      - record: container:memory_usage_percentage
+        expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) * 100
+
+      # Container CPU usage percentage
+      - record: container:cpu_usage_percentage
+        expr: rate(container_cpu_usage_seconds_total[1m]) * 100
+
+      # Database connection pool utilization (%)
+      - record: postgres:connection_pool_utilization
+        expr: (sum(pg_stat_activity_count) / 100) * 100 # Assumes max 100 connections
+
+      # Database query latency - p95
+      - record: postgres:query_duration_p95:5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(pg_stat_statements_query_time_bucket[5m])))
+
+  # ===== BUSINESS METRICS (ROOM BOOKING) =====
+  - name: business_metrics
+    interval: 15s
+    rules:
+      # Booking success rate (successful bookings per second)
+      - record: booking:success_rate:1m
+        expr: rate(booking_created_total[1m])
+
+      # Booking failure rate
+      - record: booking:failure_rate:1m
+        expr: rate(booking_failed_total[1m])
+
+      # Booking success percentage
+      - record: booking:success_percentage:1m
+        expr: (rate(booking_created_total[1m]) / (rate(booking_created_total[1m]) + rate(booking_failed_total[1m]))) * 100
+
+      # Average availability calculation time (seconds)
+      - record: booking:availability_calc_duration_avg:1m
+        expr: sum(rate(availability_calculation_duration_seconds_sum[1m])) / sum(rate(availability_calculation_duration_seconds_count[1m]))
+
+      # Availability calculation p95 latency
+      - record: booking:availability_calc_duration_p95:5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(availability_calculation_duration_seconds_bucket[5m])))
+
+      # Availability calculation throughput (calculations per second)
+      - record: booking:availability_calc_rate:1m
+        expr: rate(availability_calculation_total[1m])
+
+      # Redis cache hit ratio (%)
+      - record: redis:cache_hit_ratio
+        expr: (redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100
+
+      # Redis memory usage percentage
+      - record: redis:memory_usage_percentage
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100
+
+      # Redis eviction rate (evictions per second)
+      - record: redis:eviction_rate:1m
+        expr: rate(redis_evicted_keys_total[1m])
+
+      # Number of active bookings
+      - record: booking:active_count
+        expr: booking_active_total
+
+      # Rooms with availability (count)
+      - record: booking:rooms_with_availability_count
+        expr: count(availability_room_slots_available > 0)
+
+      # Average booking duration (minutes)
+      - record: booking:average_duration_minutes:1m
+        expr: (sum(rate(booking_duration_minutes_sum[1m])) / sum(rate(booking_created_total[1m]))) / 60
+
+      # Booking requests by room type (per second)
+      - record: booking:request_rate:1m:by_room_type
+        expr: sum by (room_type) (rate(booking_requests_total[1m]))
+
+      # NATS message throughput (messages per second)
+      - record: nats:message_rate:1m
+        expr: rate(nats_messages_published_total[1m])
+
+      # NATS message processing latency - p95
+      - record: nats:message_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (le, subject) (rate(nats_message_processing_duration_seconds_bucket[5m])))
+
+  # ===== COMPOSITE/DASHBOARD METRICS =====
+  - name: dashboard_metrics
+    interval: 15s
+    rules:
+      # System health score (0-100) based on error rate and latency
+      - record: system:health_score
+        expr: clamp_min(100 - (rate:http_error_percentage_5xx:1m + ((latency:http_request_duration_p95:5m * 1000) / 100)), 0)
+
+      # API throughput (total requests per second)
+      - record: api:throughput:1m
+        expr: sum(rate(http_requests_total[1m])) + sum(rate(grpc_server_handled_total[1m]))
+
+      # gRPC vs HTTP request distribution (%)
+      - record: api:grpc_percentage:1m
+        expr: (sum(rate(grpc_server_handled_total[1m])) / (sum(rate(http_requests_total[1m])) + sum(rate(grpc_server_handled_total[1m])))) * 100
+
+      # Service availability (1 if healthy, 0 if down)
+      - record: service:availability:booking_api
+        expr: up{job="booking-api"} or on() vector(0)
+
+      - record: service:availability:availability_engine
+        expr: up{job="availability-engine"} or on() vector(0)
+
+      - record: service:availability:postgres
+        expr: up{job="postgres"} or on() vector(0)
+
+      # Combined infrastructure health (average CPU + memory pressure)
+      - record: infrastructure:load_average
+        expr: (avg(node:cpu_usage:by_instance) + avg(node:memory_usage_percentage:by_instance)) / 2

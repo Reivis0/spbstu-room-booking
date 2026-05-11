@@ -9,6 +9,8 @@ import { useAuthStore } from '../store/useAuthStore';
 import BookingCard from '../components/BookingCard/BookingCard';
 import { UNIVERSITIES, UniversityCode, normalizeUniversityCode } from '../shared/university/universities';
 import { useUniversitySearchParam } from '../shared/university/useUniversitySearchParam';
+import EditBookingModal from '../components/EditBookingModal/EditBookingModal';
+import CancelBookingModal from '../components/CancelBookingModal/CancelBookingModal';
 
 type BookingTab = 'all' | UniversityCode;
 
@@ -35,13 +37,15 @@ const translateReason = (reason?: string): string => {
   return mapping[reason] || reason;
 };
 
-const MyBookingsPage: React.FC = () => {
+const AdminBookingsPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuthStore();
   const { universityCode, setUniversityCode } = useUniversitySearchParam();
   const activeTab = (new URLSearchParams(window.location.search).get('university') || 'all') as BookingTab;
 
+  const [editingBooking, setEditingBooking] = React.useState<Booking | null>(null);
+  const [cancellingBooking, setCancellingBooking] = React.useState<Booking | null>(null);
   const prevBookingsRef = React.useRef<Record<string, string>>({});
 
   React.useEffect(() => {
@@ -59,20 +63,34 @@ const MyBookingsPage: React.FC = () => {
   });
 
   const bookingsQuery = useQuery({
-    queryKey: ['bookings', 'my'],
-    queryFn: () => bookingsApi.getMyBookings(),
-    enabled: !authLoading,
-    refetchInterval: 5000, // Поллинг каждые 5 секунд для реактивности
+    queryKey: ['bookings', 'all'],
+    queryFn: () => bookingsApi.getAll(),
+    enabled: !authLoading && user?.role === 'admin',
+    refetchInterval: 5000,
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => bookingsApi.cancel(id),
-    onSuccess: (_, id) => {
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => bookingsApi.cancel(id, reason),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       toast.success('Бронирование успешно отменено');
+      setCancellingBooking(null);
     },
     onError: () => {
       toast.error('Не удалось отменить бронирование');
+    }
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<import('../types').BookingFormData> }) => bookingsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      toast.success('Бронирование успешно обновлено');
+      setEditingBooking(null);
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.message || 'Не удалось обновить бронирование';
+      toast.error(message);
     }
   });
 
@@ -93,7 +111,6 @@ const MyBookingsPage: React.FC = () => {
     });
   }, [bookingsQuery.data, roomsMap]);
 
-  // Отслеживание изменений статуса для уведомлений
   React.useEffect(() => {
     if (bookings.length > 0) {
       const currentBookings: Record<string, string> = {};
@@ -102,7 +119,6 @@ const MyBookingsPage: React.FC = () => {
       bookings.forEach((b) => {
         currentBookings[b.id] = b.status;
         
-        // Если статус изменился по сравнению с предыдущим запросом
         if (prevBookings[b.id] && prevBookings[b.id] !== b.status) {
           const roomName = b.roomName;
           if (b.status === 'confirmed') {
@@ -146,10 +162,13 @@ const MyBookingsPage: React.FC = () => {
     });
 
   const handleCancel = async (id: string) => {
-    if (!window.confirm('Вы уверены, что хотите отменить бронирование?')) {
-      return;
+    const bookingToCancel = bookings.find((b: Booking) => b.id === id);
+    if (bookingToCancel) {
+      setCancellingBooking(bookingToCancel);
     }
+  };
 
+  const handleConfirmCancel = async (id: string, reason: string) => {
     const token = localStorage.getItem('accessToken');
     if (!isAuthenticated && !token) {
       navigate('/login');
@@ -157,7 +176,7 @@ const MyBookingsPage: React.FC = () => {
     }
 
     try {
-      await cancelMutation.mutateAsync(id);
+      await cancelMutation.mutateAsync({ id, reason });
     } catch (err: any) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         navigate('/login');
@@ -165,11 +184,19 @@ const MyBookingsPage: React.FC = () => {
     }
   };
 
+  const handleEdit = (booking: Booking) => {
+    setEditingBooking(booking);
+  };
+
+  const handleSaveEdit = async (id: string, data: { startsAt: string; endsAt: string }) => {
+    await updateMutation.mutateAsync({ id, data: { roomId: editingBooking?.roomId, ...data } });
+  };
+
   const setTab = (tab: BookingTab) => {
     if (tab === 'all') {
       const params = new URLSearchParams(window.location.search);
       params.delete('university');
-      navigate(`/my-bookings${params.toString() ? `?${params.toString()}` : ''}`);
+      navigate(`/admin/bookings${params.toString() ? `?${params.toString()}` : ''}`);
       return;
     }
     setUniversityCode(tab);
@@ -187,8 +214,8 @@ const MyBookingsPage: React.FC = () => {
     <section className="my-bookings-page">
       <div className="container">
         <div className="bookings-header">
-          <h1>Мои бронирования</h1>
-          <p>Управляйте своими бронированиями аудиторий и фильтруйте их по вузам</p>
+          <h1>Управление бронированиями</h1>
+          <p>Просмотр всех бронирований системы с возможностью отмены</p>
         </div>
 
         <div className="tabs bookings-tabs" role="tablist" aria-label="Фильтр бронирований по вузу">
@@ -223,10 +250,10 @@ const MyBookingsPage: React.FC = () => {
           <>
             {upcomingBookings.length > 0 && (
               <section className="bookings-section">
-                <h2>Предстоящие бронирования</h2>
+                <h2>Активные бронирования</h2>
                 <div className="bookings-grid">
                   {upcomingBookings.map((booking: Booking) => (
-                    <BookingCard key={booking.id} booking={booking} onCancel={handleCancel} />
+                    <BookingCard key={booking.id} booking={booking} onCancel={handleCancel} onEdit={handleEdit} isAdminView={true} />
                   ))}
                 </div>
               </section>
@@ -234,10 +261,10 @@ const MyBookingsPage: React.FC = () => {
 
             {pastBookings.length > 0 && (
               <section className="bookings-section">
-                <h2>Прошедшие бронирования</h2>
+                <h2>Прошлые / Отмененные бронирования</h2>
                 <div className="bookings-grid">
                   {pastBookings.map((booking: Booking) => (
-                    <BookingCard key={booking.id} booking={booking} onCancel={handleCancel} readOnly />
+                    <BookingCard key={booking.id} booking={booking} onCancel={handleCancel} onEdit={handleEdit} readOnly isAdminView={true} />
                   ))}
                 </div>
               </section>
@@ -245,8 +272,22 @@ const MyBookingsPage: React.FC = () => {
           </>
         )}
       </div>
+
+      <EditBookingModal 
+        booking={editingBooking}
+        isOpen={editingBooking !== null}
+        onClose={() => setEditingBooking(null)}
+        onSave={handleSaveEdit}
+      />
+
+      <CancelBookingModal 
+        booking={cancellingBooking}
+        isOpen={cancellingBooking !== null}
+        onClose={() => setCancellingBooking(null)}
+        onConfirm={handleConfirmCancel}
+      />
     </section>
   );
 };
 
-export default MyBookingsPage;
+export default AdminBookingsPage;

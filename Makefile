@@ -49,12 +49,12 @@ infra: $(ENV_FILE) ## Start only infrastructure (DB, Redis, NATS)
 	docker compose up -d postgres redis nats migrate
 
 api: $(ENV_FILE) ## Rebuild and restart only the Java API
-	docker compose build booking_api
-	docker compose up -d --no-deps booking_api
+	docker compose build booking-api
+	docker compose up -d --no-deps booking-api
 
 engine: $(ENV_FILE) ## Rebuild and restart only the C++ Engine
-	docker compose build availabilityengine
-	docker compose up -d --no-deps availabilityengine
+	docker compose build availability-engine
+	docker compose up -d --no-deps availability-engine
 
 ui: $(ENV_FILE) ## Rebuild and restart only the Frontend
 	docker compose build frontend

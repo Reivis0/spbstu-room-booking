@@ -1,0 +1,326 @@
+# SPbSTU Room Booking System - Prometheus Alerting Rules
+# Symptom-based alerting: alert on observable symptoms of failure, not causes
+# Golden Signals Framework: Latency, Traffic, Errors, Saturation
+
+groups:
+  - name: golden_alerts
+    interval: 15s
+    rules:
+      # =============================================================================
+      # SYMPTOM 1: HIGH ERROR RATE
+      # Indicates: Application is returning error responses at elevated rate
+      # Impact: Users receiving failures, degraded user experience
+      # =============================================================================
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) +
+            sum(rate(http_requests_total{status=~"4.."}[5m]))
+          ) / sum(rate(http_requests_total[5m])) > 0.01
+        for: 5m
+        annotations:
+          summary: "High error rate detected in {{ $labels.service }}"
+          description: |
+            Error rate has exceeded 1% threshold for 5 minutes.
+            Service: {{ $labels.service }}
+            Environment: {{ $labels.environment }}
+            Instance: {{ $labels.instance }}
+            Current error rate: {{ printf "%.2f" $value | mulfloat 100 }}%
+            
+            This indicates a systemic issue affecting user-facing API endpoints.
+            Investigate application logs for root cause.
+          runbook_url: "https://wiki.example.com/runbooks/HighErrorRate"
+          dashboard_url: "http://grafana:3000/d/api-health/api-health-overview"
+        labels:
+          severity: critical
+          service: "{{ $labels.service }}"
+          environment: "{{ $labels.environment }}"
+          instance: "{{ $labels.instance }}"
+          component: api
+
+      # =============================================================================
+      # SYMPTOM 2: HIGH LATENCY
+      # Indicates: API responses are slow, user experience degraded
+      # Impact: Poor user experience, potential timeout cascades
+      # =============================================================================
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, service_name) (
+              rate(http_request_duration_seconds_bucket[5m])
+            )
+          ) > 0.5
+        for: 5m
+        annotations:
+          summary: "High latency detected in {{ $labels.service_name }}"
+          description: |
+            95th percentile latency has exceeded 500ms for 5 minutes.
+            Service: {{ $labels.service_name }}
+            Instance: {{ $labels.instance }}
+            Environment: {{ $labels.environment }}
+            Current p95 latency: {{ printf "%.3f" $value }}s
+            
+            This indicates performance degradation or resource saturation.
+            Check CPU, memory, database query times, and network latency.
+          runbook_url: "https://wiki.example.com/runbooks/HighLatency"
+          dashboard_url: "http://grafana:3000/d/latency-analysis/latency-analysis"
+        labels:
+          severity: warning
+          service: "{{ $labels.service_name }}"
+          environment: "{{ $labels.environment }}"
+          instance: "{{ $labels.instance }}"
+          component: api
+
+      # =============================================================================
+      # SYMPTOM 3: INSTANCE DOWN
+      # Indicates: Service instance is not responding to metric scrapes
+      # Impact: Service unavailable, traffic redirected to other instances or rejected
+      # =============================================================================
+      - alert: InstanceDown
+        expr: |
+          up{job=~"java-api|cpp-engine|postgres-exporter|nats-exporter"} == 0
+        for: 3m
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down"
+          description: |
+            Instance has not responded to metric scrapes for 3 minutes.
+            Job: {{ $labels.job }}
+            Instance: {{ $labels.instance }}
+            Environment: {{ $labels.environment }}
+            
+            The service is unavailable and cannot process requests.
+            Immediate action required: check service logs, container status, and network connectivity.
+          runbook_url: "https://wiki.example.com/runbooks/InstanceDown"
+          dashboard_url: "http://grafana:3000/d/service-status/service-status"
+        labels:
+          severity: critical
+          job: "{{ $labels.job }}"
+          instance: "{{ $labels.instance }}"
+          environment: "{{ $labels.environment }}"
+          component: infrastructure
+
+      # =============================================================================
+      # SYMPTOM 4: DISK SPACE RUNNING OUT
+      # Indicates: Disk will be full within 24 hours based on current usage trends
+      # Impact: Service will crash when disk is full, data loss potential
+      # =============================================================================
+      - alert: DiskSpaceRunningOut
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{mountpoint="/"}[1h], 86400) < 1073741824
+        for: 5m
+        annotations:
+          summary: "Disk space will run out within 24 hours on {{ $labels.instance }}"
+          description: |
+            Disk usage trend indicates volume will fill within 24 hours.
+            Instance: {{ $labels.instance }}
+            Device: {{ $labels.device }}
+            Mountpoint: {{ $labels.mountpoint }}
+            Current available space: {{ printf "%.2f" (div $value 1073741824) }}GB
+            Projected remaining space in 24h: ~0GB
+            
+            The service will fail when disk space is exhausted.
+            Clean up old logs, temporary files, or expand storage immediately.
+          runbook_url: "https://wiki.example.com/runbooks/DiskSpaceRunningOut"
+          dashboard_url: "http://grafana:3000/d/infrastructure/infrastructure-resources"
+        labels:
+          severity: warning
+          instance: "{{ $labels.instance }}"
+          device: "{{ $labels.device }}"
+          mountpoint: "{{ $labels.mountpoint }}"
+          environment: "{{ $labels.environment }}"
+          component: infrastructure
+
+      # =============================================================================
+      # SYMPTOM 5: HIGH CPU THROTTLING
+      # Indicates: Container is hitting CPU limits and being throttled
+      # Impact: Unpredictable performance, request timeouts, degraded throughput
+      # =============================================================================
+      - alert: HighCPUThrottling
+        expr: |
+          rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.1
+        for: 5m
+        annotations:
+          summary: "High CPU throttling detected in {{ $labels.container_name }}"
+          description: |
+            Container is being CPU-throttled more than 10% of the time.
+            Container: {{ $labels.container_name }}
+            Pod: {{ $labels.pod_name }}
+            Namespace: {{ $labels.namespace }}
+            Throttling rate: {{ printf "%.2f" (mulfloat $value 100) }}%
+            
+            This indicates CPU limits are too tight for the workload.
+            Increase CPU limits or optimize application performance.
+          runbook_url: "https://wiki.example.com/runbooks/HighCPUThrottling"
+          dashboard_url: "http://grafana:3000/d/container-resources/container-resource-usage"
+        labels:
+          severity: warning
+          container: "{{ $labels.container_name }}"
+          pod: "{{ $labels.pod_name }}"
+          environment: "{{ $labels.environment }}"
+          component: infrastructure
+
+  # =============================================================================
+  # Additional Critical Infrastructure Alerts
+  # =============================================================================
+  - name: infrastructure_alerts
+    interval: 15s
+    rules:
+      # Database connection saturation
+      - alert: DatabaseConnectionPoolAlmostExhausted
+        expr: |
+          (sum(pg_stat_activity_count) / 100) > 0.80
+        for: 5m
+        annotations:
+          summary: "Database connection pool utilization at {{ printf \"%.0f\" (mulfloat $value 100) }}%"
+          description: |
+            PostgreSQL connection pool is 80% utilized.
+            Service: {{ $labels.service_name }}
+            Connections used: {{ printf "%.0f" $value }}/100
+            
+            Risk of connection exhaustion causing request failures.
+            Check for long-running queries or connection leaks.
+          runbook_url: "https://wiki.example.com/runbooks/DatabaseConnectionPoolAlmostExhausted"
+          dashboard_url: "http://grafana:3000/d/database/database-connections"
+        labels:
+          severity: warning
+          service: postgres
+          environment: "{{ $labels.environment }}"
+
+      # gRPC communication failures
+      - alert: HighGRPCErrorRate
+        expr: |
+          sum(rate(grpc_server_handled_total{grpc_code!="OK"}[5m])) / 
+          sum(rate(grpc_server_handled_total[5m])) > 0.05
+        for: 5m
+        annotations:
+          summary: "High gRPC error rate in {{ $labels.grpc_method }}"
+          description: |
+            gRPC error rate has exceeded 5% threshold.
+            Method: {{ $labels.grpc_method }}
+            Error code: {{ $labels.grpc_code }}
+            Error rate: {{ printf "%.2f" (mulfloat $value 100) }}%
+            
+            Booking API to Availability Engine communication degraded.
+          runbook_url: "https://wiki.example.com/runbooks/HighGRPCErrorRate"
+          dashboard_url: "http://grafana:3000/d/grpc-metrics/grpc-metrics"
+        labels:
+          severity: warning
+          service: availability-engine
+          environment: "{{ $labels.environment }}"
+
+      # NATS message backlog growing
+      - alert: NATSMessageBacklogIncreasing
+        expr: |
+          rate(nats_pending_messages_total[5m]) > 100
+        for: 5m
+        annotations:
+          summary: "NATS message backlog growing for subject {{ $labels.subject }}"
+          description: |
+            NATS is accumulating unprocessed messages.
+            Subject: {{ $labels.subject }}
+            Backlog rate: {{ printf "%.0f" $value }} messages/sec
+            
+            Event consumers are not keeping up with publisher rate.
+            Check message handler health and throughput.
+          runbook_url: "https://wiki.example.com/runbooks/NATSMessageBacklogIncreasing"
+          dashboard_url: "http://grafana:3000/d/nats-metrics/nats-metrics"
+        labels:
+          severity: warning
+          service: nats
+          environment: "{{ $labels.environment }}"
+
+      # Memory pressure on container
+      - alert: HighMemoryUsage
+        expr: |
+          (container_memory_usage_bytes / container_spec_memory_limit_bytes) * 100 > 85
+        for: 5m
+        annotations:
+          summary: "High memory usage in {{ $labels.container_name }}"
+          description: |
+            Container memory usage is 85% of limit.
+            Container: {{ $labels.container_name }}
+            Memory used: {{ printf "%.2f" (div $value 1073741824) }}GB / {{ printf "%.2f" (div .limit 1073741824) }}GB
+            Usage: {{ printf "%.0f" $value }}%
+            
+            Risk of OOMKill. Optimize memory usage or increase limits.
+          runbook_url: "https://wiki.example.com/runbooks/HighMemoryUsage"
+          dashboard_url: "http://grafana:3000/d/container-resources/container-resource-usage"
+        labels:
+          severity: warning
+          container: "{{ $labels.container_name }}"
+          environment: "{{ $labels.environment }}"
+
+  # =============================================================================
+  # Booking System Specific Alerts
+  # =============================================================================
+  - name: booking_system_alerts
+    interval: 15s
+    rules:
+      # Low booking success rate
+      - alert: LowBookingSuccessRate
+        expr: |
+          (
+            rate(booking_created_total[5m]) / 
+            (rate(booking_created_total[5m]) + rate(booking_failed_total[5m]))
+          ) * 100 < 90
+        for: 5m
+        annotations:
+          summary: "Low booking success rate: {{ printf \"%.0f\" $value }}%"
+          description: |
+            Booking success rate has dropped below 90%.
+            Current success rate: {{ printf "%.0f" $value }}%
+            Environment: {{ $labels.environment }}
+            
+            Users are experiencing booking failures.
+            Check availability engine, database connectivity, and validation logic.
+          runbook_url: "https://wiki.example.com/runbooks/LowBookingSuccessRate"
+          dashboard_url: "http://grafana:3000/d/booking-metrics/booking-operations"
+        labels:
+          severity: critical
+          service: booking-api
+          environment: "{{ $labels.environment }}"
+
+      # Availability calculation timeout/slowness
+      - alert: SlowAvailabilityCalculation
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (
+              rate(availability_calculation_duration_seconds_bucket[5m])
+            )
+          ) > 2.0
+        for: 5m
+        annotations:
+          summary: "Availability calculation p95 latency: {{ printf \"%.2f\" $value }}s"
+          description: |
+            Availability engine is slow to calculate room availability.
+            P95 calculation time: {{ printf "%.2f" $value }}s (threshold: 2.0s)
+            Environment: {{ $labels.environment }}
+            
+            Booking queries will timeout. Check engine resource usage and database performance.
+          runbook_url: "https://wiki.example.com/runbooks/SlowAvailabilityCalculation"
+          dashboard_url: "http://grafana:3000/d/engine-metrics/engine-performance"
+        labels:
+          severity: warning
+          service: availability-engine
+          environment: "{{ $labels.environment }}"
+
+      # Low cache hit ratio (indicates cache churn or poor hit rate)
+      - alert: LowCacheHitRatio
+        expr: |
+          (redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100 < 50
+        for: 5m
+        annotations:
+          summary: "Low Redis cache hit ratio: {{ printf \"%.0f\" $value }}%"
+          description: |
+            Redis cache hit rate is below 50%.
+            Current hit ratio: {{ printf "%.0f" $value }}%
+            Environment: {{ $labels.environment }}
+            
+            Cache is not reducing database load effectively.
+            Optimize caching strategy or increase cache size.
+          runbook_url: "https://wiki.example.com/runbooks/LowCacheHitRatio"
+          dashboard_url: "http://grafana:3000/d/redis-metrics/redis-cache"
+        labels:
+          severity: info
+          service: redis
+          environment: "{{ $labels.environment }}"

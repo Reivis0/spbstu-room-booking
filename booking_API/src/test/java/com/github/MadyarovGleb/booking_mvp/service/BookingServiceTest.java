@@ -262,7 +262,7 @@ class BookingServiceTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(existing));
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        Booking result = bookingService.cancel(bookingId, userId, "user");
+        Booking result = bookingService.cancel(bookingId, userId, "user", null);
 
         assertThat(result.getStatus()).isEqualTo(Booking.BookingStatus.cancelled);
         verify(outboxService).addEvent(eq(OutboxEventType.BOOKING_CANCELLED), anyMap());
@@ -272,7 +272,7 @@ class BookingServiceTest {
     @DisplayName("Отмена брони: Ошибка NotFound")
     void cancel_ShouldThrowNotFound_WhenMissing() {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> bookingService.cancel(bookingId, userId, "user"))
+        assertThatThrownBy(() -> bookingService.cancel(bookingId, userId, "user", null))
                 .isInstanceOf(NotFoundException.class);
     }
 

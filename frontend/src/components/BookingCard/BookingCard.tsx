@@ -6,7 +6,9 @@ import { getUniversity } from '../../shared/university/universities';
 interface BookingCardProps {
   booking: Booking;
   onCancel?: (id: string) => void;
+  onEdit?: (booking: Booking) => void;
   readOnly?: boolean;
+  isAdminView?: boolean;
 }
 
 const translateReason = (reason?: string): string => {
@@ -25,7 +27,9 @@ const translateReason = (reason?: string): string => {
 const BookingCard: React.FC<BookingCardProps> = ({
   booking,
   onCancel,
+  onEdit,
   readOnly = false,
+  isAdminView = false,
 }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -88,6 +92,14 @@ const BookingCard: React.FC<BookingCardProps> = ({
       </div>
 
       <div className="booking-card-info">
+        {isAdminView && (
+          <div className="booking-info-item">
+            <span className="booking-info-label">Владелец:</span>
+            <span className="booking-owner-name">
+              {booking.userName || `Пользователь #${booking.userId.slice(0, 8)}`}
+            </span>
+          </div>
+        )}
         <div className="booking-info-item">
           <span className="booking-info-label">Дата:</span>
           <span>
@@ -117,13 +129,27 @@ const BookingCard: React.FC<BookingCardProps> = ({
         )}
       </div>
 
-      {canCancel && (
-        <button
-          onClick={() => onCancel(booking.id)}
-          className="booking-cancel-btn"
-        >
-          Отменить бронирование
-        </button>
+      {(canCancel || (isAdminView && onEdit)) && (
+        <div className="booking-card-actions" style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+          {isAdminView && onEdit && (
+            <button
+              onClick={() => onEdit(booking)}
+              className="btn btn--secondary"
+              style={{ flex: 1 }}
+            >
+              Редактировать
+            </button>
+          )}
+          {canCancel && (
+            <button
+              onClick={() => onCancel(booking.id)}
+              className="booking-cancel-btn"
+              style={{ flex: 1, margin: 0 }}
+            >
+              Отменить
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
