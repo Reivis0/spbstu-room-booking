@@ -8,6 +8,12 @@ spring:
     password: ${DB_PASSWORD}
     hikari:
       pool-name: bookingApiPool
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
   jpa:
     hibernate:
       ddl-auto: none
@@ -29,6 +35,12 @@ spring:
     port: ${SPRING_REDIS_PORT}
     password: ${SPRING_REDIS_PASSWORD}
     timeout: 5000
+    lettuce:
+      pool:
+        max-active: 50
+        max-idle: 20
+        min-idle: 5
+        max-wait: 3000ms
 
 server:
   port: 8081
