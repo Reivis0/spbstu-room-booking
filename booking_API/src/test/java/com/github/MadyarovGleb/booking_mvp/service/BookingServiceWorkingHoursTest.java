@@ -44,7 +44,8 @@ class BookingServiceWorkingHoursTest {
     @Mock
     private RedisService redis;
 
-    @InjectMocks
+    private BookingValidator validator = new BookingValidator();
+
     private BookingService bookingService;
 
     private UUID userId;
@@ -54,16 +55,18 @@ class BookingServiceWorkingHoursTest {
     void setUp() {
         userId = UUID.randomUUID();
         roomId = UUID.randomUUID();
+        bookingService = new BookingService(bookingRepository, availability, outboxService, bookingSagaService, redis, validator);
     }
 
     // --- WORKING HOURS VALIDATION ---
 
     @Test
-    @DisplayName("Бронирование вне рабочих часов: Начало в 07:59 (до 08:00)")
+    @DisplayName("Бронирование вне рабочих часов: Начало в 07:59 (до 08:00 МСК)")
     void createBooking_ShouldThrowInvalidBookingTime_WhenStartsBefore8AM() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
-        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(7, 59), ZoneOffset.UTC);
-        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(9, 0), ZoneOffset.UTC);
+        // 04:59 UTC = 07:59 MSK
+        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(4, 59), ZoneOffset.UTC);
+        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(6, 0), ZoneOffset.UTC);
 
         CreateBookingRequest req = CreateBookingRequest.builder()
                 .roomId(roomId)
@@ -78,11 +81,12 @@ class BookingServiceWorkingHoursTest {
     }
 
     @Test
-    @DisplayName("Бронирование вне рабочих часов: Начало в 07:00")
+    @DisplayName("Бронирование вне рабочих часов: Начало в 07:00 (МСК)")
     void createBooking_ShouldThrowInvalidBookingTime_WhenStartsAt7AM() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
-        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(7, 0), ZoneOffset.UTC);
-        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(8, 30), ZoneOffset.UTC);
+        // 04:00 UTC = 07:00 MSK
+        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(4, 0), ZoneOffset.UTC);
+        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(5, 30), ZoneOffset.UTC);
 
         CreateBookingRequest req = CreateBookingRequest.builder()
                 .roomId(roomId)
@@ -97,11 +101,12 @@ class BookingServiceWorkingHoursTest {
     }
 
     @Test
-    @DisplayName("Бронирование вне рабочих часов: Конец в 21:01 (после 21:00)")
+    @DisplayName("Бронирование вне рабочих часов: Конец в 21:01 (после 21:00 МСК)")
     void createBooking_ShouldThrowInvalidBookingTime_WhenEndsAfter9PM() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
-        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(20, 0), ZoneOffset.UTC);
-        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(21, 1), ZoneOffset.UTC);
+        // 18:01 UTC = 21:01 MSK
+        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(17, 0), ZoneOffset.UTC);
+        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(18, 1), ZoneOffset.UTC);
 
         CreateBookingRequest req = CreateBookingRequest.builder()
                 .roomId(roomId)
@@ -116,11 +121,12 @@ class BookingServiceWorkingHoursTest {
     }
 
     @Test
-    @DisplayName("Бронирование вне рабочих часов: Конец в 22:00")
+    @DisplayName("Бронирование вне рабочих часов: Конец в 22:00 (МСК)")
     void createBooking_ShouldThrowInvalidBookingTime_WhenEndsAt10PM() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
-        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(20, 0), ZoneOffset.UTC);
-        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(22, 0), ZoneOffset.UTC);
+        // 19:00 UTC = 22:00 MSK
+        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(17, 0), ZoneOffset.UTC);
+        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(19, 0), ZoneOffset.UTC);
 
         CreateBookingRequest req = CreateBookingRequest.builder()
                 .roomId(roomId)
@@ -135,11 +141,12 @@ class BookingServiceWorkingHoursTest {
     }
 
     @Test
-    @DisplayName("Бронирование в рабочие часы: Начало в 08:00 (граница)")
+    @DisplayName("Бронирование в рабочие часы: Начало в 08:00 (МСК, граница)")
     void createBooking_ShouldSucceed_WhenStartsAt8AM() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
-        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(8, 0), ZoneOffset.UTC);
-        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(9, 0), ZoneOffset.UTC);
+        // 05:00 UTC = 08:00 MSK
+        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(5, 0), ZoneOffset.UTC);
+        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(6, 0), ZoneOffset.UTC);
 
         CreateBookingRequest req = CreateBookingRequest.builder()
                 .roomId(roomId)
@@ -159,11 +166,12 @@ class BookingServiceWorkingHoursTest {
     }
 
     @Test
-    @DisplayName("Бронирование в рабочие часы: Конец в 21:00 (граница)")
+    @DisplayName("Бронирование в рабочие часы: Конец в 21:00 (МСК, граница)")
     void createBooking_ShouldSucceed_WhenEndsAt9PM() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
-        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(20, 0), ZoneOffset.UTC);
-        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(21, 0), ZoneOffset.UTC);
+        // 18:00 UTC = 21:00 MSK
+        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(17, 0), ZoneOffset.UTC);
+        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(18, 0), ZoneOffset.UTC);
 
         CreateBookingRequest req = CreateBookingRequest.builder()
                 .roomId(roomId)
@@ -183,11 +191,12 @@ class BookingServiceWorkingHoursTest {
     }
 
     @Test
-    @DisplayName("Бронирование в рабочие часы: Полный рабочий день (08:00-21:00)")
+    @DisplayName("Бронирование в рабочие часы: Полный рабочий день (08:00-21:00 МСК)")
     void createBooking_ShouldSucceed_WhenCoversFullWorkingDay() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
-        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(8, 0), ZoneOffset.UTC);
-        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(21, 0), ZoneOffset.UTC);
+        // 05:00-18:00 UTC = 08:00-21:00 MSK
+        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(5, 0), ZoneOffset.UTC);
+        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(18, 0), ZoneOffset.UTC);
 
         CreateBookingRequest req = CreateBookingRequest.builder()
                 .roomId(roomId)
@@ -207,11 +216,12 @@ class BookingServiceWorkingHoursTest {
     }
 
     @Test
-    @DisplayName("Бронирование в рабочие часы: Середина дня (12:00-14:00)")
+    @DisplayName("Бронирование в рабочие часы: Середина дня (12:00-14:00 МСК)")
     void createBooking_ShouldSucceed_WhenInMiddleOfWorkingHours() {
         LocalDate tomorrow = LocalDate.now().plusDays(1);
-        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC);
-        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(14, 0), ZoneOffset.UTC);
+        // 09:00-11:00 UTC = 12:00-14:00 MSK
+        OffsetDateTime startsAt = OffsetDateTime.of(tomorrow, LocalTime.of(9, 0), ZoneOffset.UTC);
+        OffsetDateTime endsAt = OffsetDateTime.of(tomorrow, LocalTime.of(11, 0), ZoneOffset.UTC);
 
         CreateBookingRequest req = CreateBookingRequest.builder()
                 .roomId(roomId)

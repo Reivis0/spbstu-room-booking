@@ -114,7 +114,7 @@ private:
     std::mutex m_queue_mutex; 
     static bool is_table_allowed(const std::string& table);
 
-    std::shared_ptr<PostgreSQLConnectionPool> connection_pool;
+    std::weak_ptr<PostgreSQLConnectionPool> connection_pool;
 };
 
 #endif

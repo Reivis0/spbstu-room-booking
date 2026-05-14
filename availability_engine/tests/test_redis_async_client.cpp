@@ -1,4 +1,4 @@
-#include "redis_async_client.hpp"
+#include "cache/redis_async_client.hpp"
 #include "logger.hpp"
 #include "message.pb.h" // Include the generated protobuf header
 #include <gtest/gtest.h>
@@ -11,14 +11,22 @@
 class RedisAsyncClientTest : public ::testing::Test {
 protected:
     RedisAsyncClient client;
+    std::thread event_loop_thread;
 
     void SetUp() override {
-        client.connect();
+        event_loop_thread = std::thread([this]() {
+            client.connect();
+            client.run_event_loop();
+        });
         std::this_thread::sleep_for(std::chrono::seconds(1)); // Allow connection to establish
     }
 
     void TearDown() override {
+        client.stop_event_loop();
         client.disconnect();
+        if (event_loop_thread.joinable()) {
+            event_loop_thread.join();
+        }
     }
 };
 
@@ -67,37 +75,21 @@ TEST_F(RedisAsyncClientTest, TestSetAndGetProtobuf) {
 
     std::this_thread::sleep_for(std::chrono::seconds(1)); // Allow command to execute
 
-    room_service::ValidateResponse retrieved_message;
+    room_service::ValidateRequest retrieved_message;
     auto get_callback = std::make_shared<RedisCallbackImpl>([&retrieved_message](redisReply* reply) {
         ASSERT_NE(reply, nullptr);
         ASSERT_EQ(reply->type, REDIS_REPLY_STRING);
-        ASSERT_TRUE(retrieved_message.ParseFromString(reply->str));
+        // retrieved_message is already populated by getProtobuf
     });
 
     client.getProtobuf(key, retrieved_message, get_callback);
 
     std::this_thread::sleep_for(std::chrono::seconds(1)); // Allow command to execute
+    ASSERT_EQ(retrieved_message.room_id(), "test_room");
 }
 
 TEST_F(RedisAsyncClientTest, TestDisconnect) {
-    std::mutex mtx;
-    std::condition_variable cv;
-    bool callback_invoked = false;
-
-    // Set up a mechanism to wait for the disconnect callback
-    client.setDisconnectCallback([&]() {
-        std::unique_lock<std::mutex> lock(mtx);
-        callback_invoked = true;
-        cv.notify_one();
-    });
-
     client.disconnect();
-
-    // Wait for the callback to be invoked or timeout
-    {
-        std::unique_lock<std::mutex> lock(mtx);
-        cv.wait_for(lock, std::chrono::seconds(5), [&]() { return callback_invoked; });
-    }
-
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_FALSE(client.is_connected());
 }

@@ -71,7 +71,7 @@ std::string PostgreSQLAsyncClient::Connector::get_connecting_str() {
 PostgreSQLAsyncClient::PostgreSQLAsyncClient(std::shared_ptr<PostgreSQLConnectionPool> pool) : connection_pool(pool) {
 }
 
-PostgreSQLAsyncClient::PostgreSQLAsyncClient() : connection_pool(nullptr) {
+PostgreSQLAsyncClient::PostgreSQLAsyncClient() : connection_pool() {
 }
 
 PostgreSQLAsyncClient::~PostgreSQLAsyncClient() {

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "common/messaging/nats_async_client.hpp"
+#include "messaging/nats_async_client.hpp"
 
 class NATSClientTest : public ::testing::Test {
 protected:

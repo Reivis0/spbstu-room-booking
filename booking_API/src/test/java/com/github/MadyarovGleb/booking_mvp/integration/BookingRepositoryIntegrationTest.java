@@ -12,46 +12,38 @@ import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Testcontainers
+import com.github.MadyarovGleb.booking_mvp.repository.BuildingRepository;
+import com.github.MadyarovGleb.booking_mvp.repository.UserRepository;
+import com.github.MadyarovGleb.booking_mvp.entity.Building;
+import com.github.MadyarovGleb.booking_mvp.entity.User;
+
 @DataJpaTest
 @ImportAutoConfiguration(FlywayAutoConfiguration.class)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @DisplayName("Integration тесты для BookingRepository с PostgreSQL")
 class BookingRepositoryIntegrationTest {
 
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
-            .withDatabaseName("booking_test")
-            .withUsername("test")
-            .withPassword("test");
-
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
-        registry.add("spring.flyway.locations", () -> "classpath:db/migration");
-        registry.add("spring.flyway.placeholders.app_user", () -> "test");
-    }
-
     @Autowired
     private BookingRepository bookingRepository;
 
     @Autowired
     private RoomRepository roomRepository;
+
+    @Autowired
+    private BuildingRepository buildingRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private UUID userId;
     private UUID roomId;
@@ -60,14 +52,30 @@ class BookingRepositoryIntegrationTest {
     void setUp() {
         bookingRepository.deleteAll();
         roomRepository.deleteAll();
+        buildingRepository.deleteAll();
+        userRepository.deleteAll();
         
-        userId = UUID.randomUUID();
+        User user = User.builder()
+                .email("test-" + UUID.randomUUID().toString() + "@test.com")
+                .passwordHash("hash")
+                .firstname("Test")
+                .lastname("Test")
+                .build();
+        user = userRepository.save(user);
+        userId = user.getId();
+        
+        Building building = Building.builder()
+                .name("Main Building")
+                .code("MAIN-" + UUID.randomUUID().toString().substring(0, 8))
+                .address("123 Test St")
+                .build();
+        building = buildingRepository.save(building);
         
         // Create a test room
         Room room = Room.builder()
-                .id(UUID.randomUUID())
                 .name("101")
-                .buildingId(UUID.randomUUID())
+                .code("101-" + UUID.randomUUID().toString().substring(0, 8))
+                .buildingId(building.getId())
                 .capacity(30)
                 .floor(1)
                 .build();
@@ -78,12 +86,16 @@ class BookingRepositoryIntegrationTest {
     @Test
     @DisplayName("Сохранение и получение бронирования")
     void saveAndRetrieveBooking_ShouldWork() {
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
+        OffsetDateTime start = OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC);
+        OffsetDateTime end = OffsetDateTime.of(tomorrow, LocalTime.of(11, 0), ZoneOffset.UTC);
+        
         OffsetDateTime now = OffsetDateTime.now();
         Booking booking = Booking.builder()
                 .userId(userId)
                 .roomId(roomId)
-                .startsAt(now.plusHours(1))
-                .endsAt(now.plusHours(2))
+                .startsAt(start)
+                .endsAt(end)
                 .title("Test Meeting")
                 .status(Booking.BookingStatus.pending)
                 .createdAt(now)
@@ -102,14 +114,23 @@ class BookingRepositoryIntegrationTest {
     @DisplayName("Поиск бронирований по userId")
     void findByUserId_ShouldReturnUserBookings() {
         UUID otherUserId = UUID.randomUUID();
-        OffsetDateTime now = OffsetDateTime.now();
+        User otherUser = User.builder()
+                .email("test-" + otherUserId.toString() + "@test.com")
+                .passwordHash("hash")
+                .firstname("Test")
+                .lastname("Test")
+                .build();
+        otherUser = userRepository.save(otherUser);
+        otherUserId = otherUser.getId();
+
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
 
         // Create bookings for target user
-        bookingRepository.save(createBooking(userId, roomId, now.plusHours(1), now.plusHours(2)));
-        bookingRepository.save(createBooking(userId, roomId, now.plusHours(3), now.plusHours(4)));
+        bookingRepository.save(createBooking(userId, roomId, OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC), OffsetDateTime.of(tomorrow, LocalTime.of(11, 0), ZoneOffset.UTC)));
+        bookingRepository.save(createBooking(userId, roomId, OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC), OffsetDateTime.of(tomorrow, LocalTime.of(13, 0), ZoneOffset.UTC)));
         
         // Create booking for other user
-        bookingRepository.save(createBooking(otherUserId, roomId, now.plusHours(5), now.plusHours(6)));
+        bookingRepository.save(createBooking(otherUserId, roomId, OffsetDateTime.of(tomorrow, LocalTime.of(14, 0), ZoneOffset.UTC), OffsetDateTime.of(tomorrow, LocalTime.of(15, 0), ZoneOffset.UTC)));
 
         List<Booking> userBookings = bookingRepository.findByUserId(userId);
 
@@ -120,15 +141,15 @@ class BookingRepositoryIntegrationTest {
     @Test
     @DisplayName("Проверка временных пересечений (GIST индекс)")
     void findOverlappingBookings_ShouldDetectConflicts() {
-        OffsetDateTime now = OffsetDateTime.now();
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
         
         // Existing booking: 10:00 - 12:00
-        Booking existing = createBooking(userId, roomId, now.plusHours(10), now.plusHours(12));
+        Booking existing = createBooking(userId, roomId, OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC), OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC));
         bookingRepository.save(existing);
 
         // Try to find overlapping bookings for: 11:00 - 13:00 (overlaps with existing)
-        OffsetDateTime newStart = now.plusHours(11);
-        OffsetDateTime newEnd = now.plusHours(13);
+        OffsetDateTime newStart = OffsetDateTime.of(tomorrow, LocalTime.of(11, 0), ZoneOffset.UTC);
+        OffsetDateTime newEnd = OffsetDateTime.of(tomorrow, LocalTime.of(13, 0), ZoneOffset.UTC);
 
         List<Booking> allBookings = bookingRepository.findAll();
         
@@ -146,15 +167,15 @@ class BookingRepositoryIntegrationTest {
     @Test
     @DisplayName("Проверка отсутствия пересечений")
     void findOverlappingBookings_ShouldNotDetectConflicts_WhenNoOverlap() {
-        OffsetDateTime now = OffsetDateTime.now();
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
         
         // Existing booking: 10:00 - 12:00
-        Booking existing = createBooking(userId, roomId, now.plusHours(10), now.plusHours(12));
+        Booking existing = createBooking(userId, roomId, OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC), OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC));
         bookingRepository.save(existing);
 
         // Try to find overlapping bookings for: 13:00 - 14:00 (no overlap)
-        OffsetDateTime newStart = now.plusHours(13);
-        OffsetDateTime newEnd = now.plusHours(14);
+        OffsetDateTime newStart = OffsetDateTime.of(tomorrow, LocalTime.of(13, 0), ZoneOffset.UTC);
+        OffsetDateTime newEnd = OffsetDateTime.of(tomorrow, LocalTime.of(14, 0), ZoneOffset.UTC);
 
         List<Booking> allBookings = bookingRepository.findAll();
         
@@ -171,16 +192,16 @@ class BookingRepositoryIntegrationTest {
     @Test
     @DisplayName("Отмененные бронирования не должны создавать конфликты")
     void findOverlappingBookings_ShouldIgnoreCancelledBookings() {
-        OffsetDateTime now = OffsetDateTime.now();
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
         
         // Cancelled booking: 10:00 - 12:00
-        Booking cancelled = createBooking(userId, roomId, now.plusHours(10), now.plusHours(12));
+        Booking cancelled = createBooking(userId, roomId, OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC), OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC));
         cancelled.setStatus(Booking.BookingStatus.cancelled);
         bookingRepository.save(cancelled);
 
         // Try to find overlapping bookings for: 11:00 - 13:00
-        OffsetDateTime newStart = now.plusHours(11);
-        OffsetDateTime newEnd = now.plusHours(13);
+        OffsetDateTime newStart = OffsetDateTime.of(tomorrow, LocalTime.of(11, 0), ZoneOffset.UTC);
+        OffsetDateTime newEnd = OffsetDateTime.of(tomorrow, LocalTime.of(13, 0), ZoneOffset.UTC);
 
         List<Booking> allBookings = bookingRepository.findAll();
         
@@ -197,15 +218,15 @@ class BookingRepositoryIntegrationTest {
     @Test
     @DisplayName("Граничные случаи: бронирования встык не пересекаются")
     void findOverlappingBookings_ShouldNotDetectConflicts_WhenBookingsAreAdjacent() {
-        OffsetDateTime now = OffsetDateTime.now();
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
         
         // Existing booking: 10:00 - 12:00
-        Booking existing = createBooking(userId, roomId, now.plusHours(10), now.plusHours(12));
+        Booking existing = createBooking(userId, roomId, OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC), OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC));
         bookingRepository.save(existing);
 
         // New booking starts exactly when existing ends: 12:00 - 14:00
-        OffsetDateTime newStart = now.plusHours(12);
-        OffsetDateTime newEnd = now.plusHours(14);
+        OffsetDateTime newStart = OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC);
+        OffsetDateTime newEnd = OffsetDateTime.of(tomorrow, LocalTime.of(14, 0), ZoneOffset.UTC);
 
         List<Booking> allBookings = bookingRepository.findAll();
         
@@ -222,24 +243,25 @@ class BookingRepositoryIntegrationTest {
     @Test
     @DisplayName("Множественные бронирования в разных комнатах не конфликтуют")
     void findOverlappingBookings_ShouldNotDetectConflicts_WhenDifferentRooms() {
-        UUID otherRoomId = UUID.randomUUID();
+        Building building = buildingRepository.findAll().get(0);
         Room otherRoom = Room.builder()
-                .id(otherRoomId)
                 .name("102")
-                .buildingId(UUID.randomUUID())
+                .code("102-" + UUID.randomUUID().toString().substring(0, 8))
+                .buildingId(building.getId())
                 .capacity(20)
                 .floor(1)
                 .build();
-        roomRepository.save(otherRoom);
+        otherRoom = roomRepository.save(otherRoom);
+        UUID otherRoomId = otherRoom.getId();
 
-        OffsetDateTime now = OffsetDateTime.now();
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
         
         // Booking in room 1: 10:00 - 12:00
-        bookingRepository.save(createBooking(userId, roomId, now.plusHours(10), now.plusHours(12)));
+        bookingRepository.save(createBooking(userId, roomId, OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC), OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC)));
 
         // Try to book room 2 at same time: 10:00 - 12:00
-        OffsetDateTime newStart = now.plusHours(10);
-        OffsetDateTime newEnd = now.plusHours(12);
+        OffsetDateTime newStart = OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC);
+        OffsetDateTime newEnd = OffsetDateTime.of(tomorrow, LocalTime.of(12, 0), ZoneOffset.UTC);
 
         List<Booking> allBookings = bookingRepository.findAll();
         

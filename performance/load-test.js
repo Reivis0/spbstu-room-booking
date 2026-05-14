@@ -94,11 +94,11 @@ export function burstReadTask(data) {
     const tags = { type: 'read' };
     
     const resSearch = http.get(`${BASE_URL}/rooms?capacity=10`, getAuthHeaders(data.token), { tags });
-    readTrend.add(resSearch.duration, tags);
+    readTrend.add(resSearch.timings.duration, tags);
     check(resSearch, { 'search ok': (r) => r.status === 200 });
 
     const resAvail = http.get(`${BASE_URL}/rooms/${roomId}/availability?date=2026-10-24`, getAuthHeaders(data.token), { tags });
-    readTrend.add(resAvail.duration, tags);
+    readTrend.add(resAvail.timings.duration, tags);
     check(resAvail, { 'avail ok': (r) => r.status === 200 });
 }
 
@@ -110,7 +110,7 @@ export function raceWriteTask(data) {
     });
 
     const res = http.post(`${BASE_URL}/bookings`, payload, getAuthHeaders(data.token), { tags });
-    writeTrend.add(res.duration, tags);
+    writeTrend.add(res.timings.duration, tags);
     
     check(res, {
         'integrity ok': (r) => [201, 409].includes(r.status),
@@ -130,7 +130,7 @@ export function mixedLoadTask(data) {
             endsAt: `2026-10-24T${hour+1}:00:00Z`
         });
         const res = http.post(`${BASE_URL}/bookings`, payload, getAuthHeaders(data.token), { tags: { type: 'write' } });
-        writeTrend.add(res.duration);
+        writeTrend.add(res.timings.duration);
         check(res, { 'write ok': (r) => [201, 409].includes(r.status) });
     } else {
         burstReadTask(data);

@@ -12,16 +12,30 @@ find_package(CURL REQUIRED)
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/log
+    ${CMAKE_SOURCE_DIR}/src/common
     ${CMAKE_SOURCE_DIR}/src/ruz_importer/include
+    ${CMAKE_SOURCE_DIR}/src/availability_engine/include
 )
 
 # Test for AvailabilityEngine
 add_executable(test_availability_engine
     test_availability_engine.cpp
+    ${CMAKE_SOURCE_DIR}/src/availability_engine/src/async_room_service.cpp
 )
 
 target_link_libraries(test_availability_engine PRIVATE
     GTest::gtest_main
+    common_lib
+    protos_lib
+    logger_lib
+    ${REDIS_LIBRARIES}
+    ${POSTGRESQL_LIBRARIES}
+    ${PQXX_LIBRARIES}
+    nats_static
+    ${LIBEVENT_LIBRARIES}
+    event_pthreads
+    Threads::Threads
+    dl
 )
 
 # Test for PostgreSQL Async Client
@@ -32,6 +46,8 @@ add_executable(test_postgresql_async_client
 target_link_libraries(test_postgresql_async_client PRIVATE
     GTest::gtest_main
     common_lib
+    ${POSTGRESQL_LIBRARIES}
+    Threads::Threads
 )
 
 # Test for PostgreSQL Connection Pool
@@ -42,6 +58,8 @@ add_executable(test_postgresql_connection_pool
 target_link_libraries(test_postgresql_connection_pool PRIVATE
     GTest::gtest_main
     common_lib
+    ${POSTGRESQL_LIBRARIES}
+    Threads::Threads
 )
 
 # Test for Redis Async Client
@@ -53,6 +71,9 @@ target_link_libraries(test_redis_async_client PRIVATE
     GTest::gtest_main
     common_lib
     ${LIBEVENT_LIBRARIES}
+    event_pthreads
+    ${REDIS_LIBRARIES}
+    Threads::Threads
 )
 
 # Test for NATS Client
@@ -63,16 +84,43 @@ add_executable(test_nats_client
 target_link_libraries(test_nats_client PRIVATE
     GTest::gtest_main
     common_lib
+    nats_static
+    Threads::Threads
 )
 
 # Test for RUZ Importer
 add_executable(test_ruz_importer
     test_ruz_importer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/ruz_importer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/http_client.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/data_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/config.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/spbptu_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/spbgu_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/ruz_importer/src/leti_parser.cpp
+)
+
+target_include_directories(test_ruz_importer PRIVATE
+    ${JSONCPP_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIRS}
+    ${POSTGRESQL_INCLUDE_DIRS}
 )
 
 target_link_libraries(test_ruz_importer PRIVATE
     GTest::gtest_main
     common_lib
+    logger_lib
+    nats_static
+    ${CURL_LIBRARIES}
+    ${JSONCPP_LIBRARIES}
+    ${POSTGRESQL_LIBRARIES}
+    ${REDIS_LIBRARIES}
+    ${LIBEVENT_LIBRARIES}
+    event_pthreads
+    Threads::Threads
+    ssl
+    crypto
+    dl
 )
 
 # Test for RuzImporter Parsers
@@ -82,6 +130,8 @@ add_executable(test_parsers
 
 target_include_directories(test_parsers PRIVATE
     ${CMAKE_SOURCE_DIR}/src/ruz_importer/include
+    ${JSONCPP_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIRS}
 )
 
 target_sources(test_parsers PRIVATE

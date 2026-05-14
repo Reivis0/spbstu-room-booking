@@ -40,6 +40,7 @@ target_link_libraries(availability_engine PRIVATE
     ${PQXX_LIBRARIES}
     nats_static
     ${LIBEVENT_LIBRARIES}
+    event_pthreads
     Threads::Threads
     dl
 )

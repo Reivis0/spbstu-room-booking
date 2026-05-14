@@ -69,9 +69,12 @@ public class BookingService {
     )
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Booking createBooking(UUID userId, CreateBookingRequest req) {
-        MDC.put("user_id", userId.toString());
         validator.validate(req);
-        MDC.put("room_id", req.getRoomId().toString());
+        
+        MDC.put("user_id", userId.toString());
+        if (req.getRoomId() != null) {
+            MDC.put("room_id", req.getRoomId().toString());
+        }
         logger.info("Booking creation accepted, starting saga");
 
         Booking booking = Booking.builder()

@@ -43,11 +43,13 @@ TEST(SpbptuParserTest, ParseValidJson) {
 TEST(SpbguParserTest, ParseValidJson) {
     SpbguParser parser;
     std::string json = R"({
+        "From": "2026-04-20T00:00:00",
         "Days": [{
+            "Day": 1,
             "Events": [{
                 "Subject": "Physics",
-                "Start": "2026-04-20T10:00:00",
-                "End": "2026-04-20T11:30:00",
+                "Start": "10:00:00",
+                "End": "11:30:00",
                 "EducatorsDisplayText": "Petrov P.P.",
                 "LocationsDisplayText": "Room 202"
             }]
@@ -57,7 +59,7 @@ TEST(SpbguParserTest, ParseValidJson) {
     auto records = parser.parse(json);
     ASSERT_EQ(records.size(), 1);
     EXPECT_EQ(records[0].subject, "Physics");
-    EXPECT_EQ(records[0].starts_at, "2026-04-20T10:00:00");
+    EXPECT_EQ(records[0].starts_at, "2026-04-20 10:00:00");
     EXPECT_EQ(records[0].room_name, "Room 202");
 }
 

@@ -21,7 +21,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -51,7 +54,8 @@ class BookingServiceTest {
     @Mock
     private RedisService redis;
 
-    @InjectMocks
+    private BookingValidator validator = new BookingValidator();
+
     private BookingService bookingService;
 
     private UUID userId;
@@ -63,6 +67,7 @@ class BookingServiceTest {
         userId = UUID.randomUUID();
         roomId = UUID.randomUUID();
         bookingId = UUID.randomUUID();
+        bookingService = new BookingService(bookingRepository, availability, outboxService, bookingSagaService, redis, validator);
     }
 
     // --- CREATE BOOKING ---
@@ -231,7 +236,8 @@ class BookingServiceTest {
     @Test
     @DisplayName("Обновление брони: Ошибка Validation (уже началась)")
     void updateBooking_ShouldThrowValidation_WhenAlreadyStarted() {
-        Booking existing = createBooking(userId, -1, 1); // Началась час назад
+        Booking existing = createBooking(userId, 1, 2);
+        existing.setStartsAt(OffsetDateTime.now().minusDays(1)); // На день назад
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(existing));
         
         assertThatThrownBy(() -> bookingService.updateBooking(userId, "user", bookingId, createRequest(2, 3)))
@@ -312,20 +318,22 @@ class BookingServiceTest {
     // --- HELPER METHODS ---
 
     private CreateBookingRequest createRequest(int startHours, int endHours) {
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
         return CreateBookingRequest.builder()
                 .roomId(roomId)
-                .startsAt(OffsetDateTime.now().plusHours(startHours))
-                .endsAt(OffsetDateTime.now().plusHours(endHours))
+                .startsAt(OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC).plusHours(startHours))
+                .endsAt(OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC).plusHours(endHours))
                 .build();
     }
 
     private Booking createBooking(UUID uid, int startHours, int endHours) {
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
         return Booking.builder()
                 .id(bookingId)
                 .userId(uid)
                 .roomId(roomId)
-                .startsAt(OffsetDateTime.now().plusHours(startHours))
-                .endsAt(OffsetDateTime.now().plusHours(endHours))
+                .startsAt(OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC).plusHours(startHours))
+                .endsAt(OffsetDateTime.of(tomorrow, LocalTime.of(10, 0), ZoneOffset.UTC).plusHours(endHours))
                 .status(Booking.BookingStatus.pending)
                 .build();
     }

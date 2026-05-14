@@ -64,7 +64,7 @@ scrape_configs:
     scrape_interval: 30s
     scrape_timeout: 10s
     static_configs:
-      - targets: ['host.docker.internal:9187']
+      - targets: ['postgres-exporter:9187']
         labels:
           service_name: 'postgres'
           instance_type: 'database'
@@ -75,7 +75,7 @@ scrape_configs:
     scrape_interval: 30s
     scrape_timeout: 10s
     static_configs:
-      - targets: ['host.docker.internal:7777']
+      - targets: ['nats-exporter:7777']
         labels:
           service_name: 'nats'
           instance_type: 'messaging'

@@ -1,0 +1,6 @@
+FROM spbstu-room-booking-availability-engine:latest AS base
+USER root
+RUN apt-get update && apt-get install -y cmake build-essential pkg-config libgtest-dev libpq-dev libjsoncpp-dev libevent-dev libhiredis-dev libprotobuf-dev protobuf-compiler libgrpc++-dev libgrpc-dev protobuf-compiler-grpc
+COPY . /app
+WORKDIR /app
+RUN mkdir -p build && cd build && cmake -DBUILD_TESTS=ON .. && make -j4

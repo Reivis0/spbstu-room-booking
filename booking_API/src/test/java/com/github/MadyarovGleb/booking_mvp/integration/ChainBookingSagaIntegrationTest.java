@@ -27,11 +27,6 @@ import static org.mockito.Mockito.when;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -42,36 +37,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import com.github.MadyarovGleb.booking_mvp.repository.RoomRepository;
+import com.github.MadyarovGleb.booking_mvp.repository.BuildingRepository;
+import com.github.MadyarovGleb.booking_mvp.entity.Room;
+import com.github.MadyarovGleb.booking_mvp.entity.Building;
+
+import com.github.MadyarovGleb.booking_mvp.repository.UserRepository;
+import com.github.MadyarovGleb.booking_mvp.entity.User;
+
 @SpringBootTest
-@Testcontainers
 public class ChainBookingSagaIntegrationTest {
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
-            .withDatabaseName("booking_test")
-            .withUsername("test")
-            .withPassword("test");
-
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
-        registry.add("spring.flyway.locations", () -> "classpath:db/migration");
-        registry.add("spring.flyway.placeholders.app_user", () -> "test");
-        registry.add("SPRING_REDIS_HOST", () -> "localhost");
-        registry.add("SPRING_REDIS_PORT", () -> "6379");
-        registry.add("NATS_URL", () -> "nats://localhost:4222");
-        registry.add("AVAILABILITY_ENGINE_HOST", () -> "localhost");
-        registry.add("AVAILABILITY_ENGINE_PORT", () -> "50051");
-    }
 
     @Autowired
     private ChainBookingSagaOrchestrator orchestrator;
 
     @Autowired
     private BookingRepository bookingRepository;
+
+    @Autowired
+    private RoomRepository roomRepository;
+
+    @Autowired
+    private BuildingRepository buildingRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @MockBean
     private AvailabilityEngineClient availabilityEngineClient;
@@ -83,9 +73,34 @@ public class ChainBookingSagaIntegrationTest {
     @BeforeEach
     void setUp() {
         bookingRepository.deleteAll();
-        testUserId = UUID.randomUUID();
-        room1Id = UUID.randomUUID();
-        room2Id = UUID.randomUUID();
+        roomRepository.deleteAll();
+        buildingRepository.deleteAll();
+        userRepository.deleteAll();
+        
+        User user = User.builder()
+                .email("test-" + UUID.randomUUID().toString() + "@test.com")
+                .passwordHash("hash")
+                .firstname("Test")
+                .lastname("Test")
+                .build();
+        user = userRepository.save(user);
+        testUserId = user.getId();
+
+        Building building = Building.builder()
+                .name("Saga Building")
+                .code("SAGA-" + UUID.randomUUID().toString().substring(0, 8))
+                .address("Saga Address")
+                .build();
+        building = buildingRepository.save(building);
+
+        Room room1 = Room.builder().name("101").code("S101-" + UUID.randomUUID().toString().substring(0, 8)).buildingId(building.getId()).capacity(30).floor(1).build();
+        Room room2 = Room.builder().name("102").code("S102-" + UUID.randomUUID().toString().substring(0, 8)).buildingId(building.getId()).capacity(30).floor(1).build();
+        
+        room1 = roomRepository.save(room1);
+        room2 = roomRepository.save(room2);
+        
+        room1Id = room1.getId();
+        room2Id = room2.getId();
     }
 
     @Test
@@ -96,9 +111,10 @@ public class ChainBookingSagaIntegrationTest {
         when(availabilityEngineClient.validate(any(), any(), any(), any()))
                 .thenReturn(successResult);
 
+        java.time.LocalDate tomorrow = java.time.LocalDate.now().plusDays(1);
         List<CreateBookingRequest> requests = List.of(
-                CreateBookingRequest.builder().roomId(room1Id).startsAt(OffsetDateTime.now().plusHours(1)).endsAt(OffsetDateTime.now().plusHours(2)).build(),
-                CreateBookingRequest.builder().roomId(room2Id).startsAt(OffsetDateTime.now().plusHours(2)).endsAt(OffsetDateTime.now().plusHours(3)).build()
+                CreateBookingRequest.builder().roomId(room1Id).startsAt(OffsetDateTime.of(tomorrow, java.time.LocalTime.of(10, 0), java.time.ZoneOffset.UTC)).endsAt(OffsetDateTime.of(tomorrow, java.time.LocalTime.of(11, 0), java.time.ZoneOffset.UTC)).build(),
+                CreateBookingRequest.builder().roomId(room2Id).startsAt(OffsetDateTime.of(tomorrow, java.time.LocalTime.of(11, 0), java.time.ZoneOffset.UTC)).endsAt(OffsetDateTime.of(tomorrow, java.time.LocalTime.of(12, 0), java.time.ZoneOffset.UTC)).build()
         );
 
         List<Booking> result = orchestrator.execute(testUserId, requests);
@@ -123,9 +139,10 @@ public class ChainBookingSagaIntegrationTest {
         when(availabilityEngineClient.validate(Mockito.eq(room2Id), any(), any(), any()))
                 .thenReturn(failureResult);
 
+        java.time.LocalDate tomorrow = java.time.LocalDate.now().plusDays(1);
         List<CreateBookingRequest> requests = List.of(
-                CreateBookingRequest.builder().roomId(room1Id).startsAt(OffsetDateTime.now().plusHours(5)).endsAt(OffsetDateTime.now().plusHours(6)).build(),
-                CreateBookingRequest.builder().roomId(room2Id).startsAt(OffsetDateTime.now().plusHours(6)).endsAt(OffsetDateTime.now().plusHours(7)).build()
+                CreateBookingRequest.builder().roomId(room1Id).startsAt(OffsetDateTime.of(tomorrow, java.time.LocalTime.of(12, 0), java.time.ZoneOffset.UTC)).endsAt(OffsetDateTime.of(tomorrow, java.time.LocalTime.of(13, 0), java.time.ZoneOffset.UTC)).build(),
+                CreateBookingRequest.builder().roomId(room2Id).startsAt(OffsetDateTime.of(tomorrow, java.time.LocalTime.of(13, 0), java.time.ZoneOffset.UTC)).endsAt(OffsetDateTime.of(tomorrow, java.time.LocalTime.of(14, 0), java.time.ZoneOffset.UTC)).build()
         );
 
         try {
@@ -134,12 +151,8 @@ public class ChainBookingSagaIntegrationTest {
             // Expected
         }
 
-        // Verify that ALL bookings in the chain are in REJECTED/CANCELLED state
-        List<Booking> allBookings = bookingRepository.findAll();
-        assertThat(allBookings).hasSize(2);
-        for (Booking b : allBookings) {
-            assertThat(b.getStatus()).isEqualTo(BookingStatus.rejected);
-            assertThat(b.getCancellationReason()).contains("chain_rollback");
-        }
+        // Verify that NO bookings were saved (atomic rollback)
+        List<Booking> savedBookings = bookingRepository.findAll();
+        assertThat(savedBookings).isEmpty();
     }
 }

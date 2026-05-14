@@ -1,6 +1,7 @@
 #include "redis_async_client.hpp"
 #include "logger.hpp"
 
+#include <event2/thread.h>
 #include <iostream>
 #include <fstream>
 #include <cstring>
@@ -53,6 +54,7 @@ std::map<std::string, std::string> RedisAsyncClient::RedisConnector::read_config
 bool RedisAsyncClient::RedisConnector::setup_event_base()
 {
     if (ev_base) return true;
+    evthread_use_pthreads();
     ev_base = event_base_new();
     return ev_base != nullptr;
 }
@@ -399,7 +401,7 @@ void RedisAsyncClient::getProtobuf(const std::string& key, google::protobuf::Mes
             if (cb) cb->onRedisReply(reply);
             return;
         }
-        if (!message.ParseFromString(reply->str)) {
+        if (!message.ParseFromArray(reply->str, reply->len)) {
             LOG_ERROR("Failed to deserialize protobuf message");
             if (cb) cb->onRedisReply(reply);
             return;

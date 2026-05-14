@@ -40,12 +40,12 @@ public class BookingValidator {
 
         if (startTime.isBefore(WORKING_HOURS_START)) {
             logger.warn("Booking validation failed: start time {} MSK is before working hours start {}", startTime, WORKING_HOURS_START);
-            throw new InvalidBookingTimeException("Время начала должно быть не ранее 08:00 (МСК).");
+            throw new InvalidBookingTimeException("Booking start time must be at or after 08:00 (08:00 - 21:00 MSK)");
         }
 
         if (endTime.isAfter(WORKING_HOURS_END)) {
             logger.warn("Booking validation failed: end time {} MSK is after working hours end {}", endTime, WORKING_HOURS_END);
-            throw new InvalidBookingTimeException("Время окончания должно быть не позднее 21:00 (МСК).");
+            throw new InvalidBookingTimeException("Booking end time must be at or before 21:00 (08:00 - 21:00 MSK)");
         }
     }
 }

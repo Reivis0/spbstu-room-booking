@@ -1,6 +1,7 @@
 #include "../src/ruz_importer/include/ruz_importer.hpp"
 #include "../src/common/database/postgreSQL_async_client.hpp"
 #include "../src/common/messaging/nats_async_client.hpp"
+#include "../src/common/cache/redis_async_client.hpp"
 #include "logger.hpp"
 #include <gtest/gtest.h>
 #include <memory>
@@ -10,7 +11,10 @@
 class RuzImporterTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        Logger::getInstance().init();
+        // Disable real HTTP requests in tests by providing an empty or dummy university list
+        setenv("RUZ_UNIVERSITIES", "dummy_uni_to_skip_http", 1);
+
+        Logger::getInstance().init("test_ruz_importer");
         
         // Create and initialize PostgreSQL connection pool
         pg_pool = std::make_shared<PostgreSQLConnectionPool>(5);
@@ -18,7 +22,8 @@ protected:
         
         pg_client = std::make_shared<PostgreSQLAsyncClient>(pg_pool);
         nats_client = std::make_shared<NatsAsyncClient>();
-        importer = std::make_unique<RuzImporter>(pg_client, nats_client);
+        redis_client = std::make_shared<RedisAsyncClient>();
+        importer = std::make_unique<RuzImporter>(pg_client, nats_client, redis_client);
     }
 
     void TearDown() override {
@@ -30,6 +35,7 @@ protected:
     std::shared_ptr<PostgreSQLConnectionPool> pg_pool;
     std::shared_ptr<PostgreSQLAsyncClient> pg_client;
     std::shared_ptr<NatsAsyncClient> nats_client;
+    std::shared_ptr<RedisAsyncClient> redis_client;
     std::unique_ptr<RuzImporter> importer;
 };
 
@@ -73,12 +79,18 @@ TEST_F(RuzImporterTest, HandleShutdownGracefully) {
 }
 
 TEST_F(RuzImporterTest, MultipleShutdownCalls) {
-    EXPECT_NO_THROW(importer->start());
+    std::thread importer_thread([this]() {
+        EXPECT_NO_THROW(importer->start());
+    });
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
     EXPECT_NO_THROW(importer->shutdown());
     EXPECT_NO_THROW(importer->shutdown()); // Should not crash on second call
     EXPECT_NO_THROW(importer->shutdown()); // Should not crash on third call
+
+    if (importer_thread.joinable()) {
+        importer_thread.join();
+    }
 }
 
 TEST_F(RuzImporterTest, ShutdownWithoutStart) {
@@ -88,7 +100,7 @@ TEST_F(RuzImporterTest, ShutdownWithoutStart) {
 
 TEST_F(RuzImporterTest, ImporterWithNullClients) {
     // Create importer with null clients
-    auto importer_null = std::make_unique<RuzImporter>(nullptr, nullptr);
+    auto importer_null = std::make_unique<RuzImporter>(nullptr, nullptr, nullptr);
     EXPECT_NE(importer_null, nullptr);
     
     // Should not crash when shutdown is called
@@ -97,10 +109,15 @@ TEST_F(RuzImporterTest, ImporterWithNullClients) {
 
 TEST_F(RuzImporterTest, StartThenShutdownMultipleTimes) {
     for (int i = 0; i < 3; ++i) {
-        auto temp_importer = std::make_unique<RuzImporter>(pg_client, nats_client);
-        EXPECT_NO_THROW(temp_importer->start());
+        auto temp_importer = std::make_unique<RuzImporter>(pg_client, nats_client, redis_client);
+        std::thread importer_thread([&temp_importer]() {
+            EXPECT_NO_THROW(temp_importer->start());
+        });
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         EXPECT_NO_THROW(temp_importer->shutdown());
+        if (importer_thread.joinable()) {
+            importer_thread.join();
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }

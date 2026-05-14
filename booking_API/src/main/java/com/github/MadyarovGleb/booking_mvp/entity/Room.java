@@ -2,6 +2,8 @@ package com.github.MadyarovGleb.booking_mvp.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -26,6 +28,7 @@ public class Room {
     @Column(nullable = false)
     private Integer capacity;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private String features;
 

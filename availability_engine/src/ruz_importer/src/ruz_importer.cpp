@@ -125,7 +125,7 @@ void RuzImporter::start() {
         if (m_pg_client) {
             LOG_INFO("RUZ_Importer: Connecting to PostgreSQL...");
             for (int i = 0; i < 20 && !m_pg_client->is_connected(); ++i) {
-                if (stop_requested.load()) return;
+                if (stop_requested.load() || shutdown_) return;
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
             if (m_pg_client->is_connected()) {
@@ -142,11 +142,9 @@ void RuzImporter::start() {
 }
 
 void RuzImporter::shutdown() {
-    static bool is_shutdown = false;
-    if (is_shutdown) return;
+    if (shutdown_.exchange(true)) return;
     
     LOG_INFO("RUZ_Importer: Shutting down...");
-    shutdown_ = true;
     m_shutdown_cv.notify_all(); 
 
     if (m_pg_client && m_pg_client->is_connected()) {
@@ -159,7 +157,6 @@ void RuzImporter::shutdown() {
     }
     
     LOG_INFO("RUZ_Importer: Shutdown completed.");
-    is_shutdown = true;
 }
 
 void RuzImporter::run() {
